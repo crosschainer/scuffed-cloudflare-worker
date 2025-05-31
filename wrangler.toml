@@ -6,9 +6,13 @@ account_id = "9f5eccdd843ab1ee026067fab55893f0"
 [build]
 command = ""
 
-# Specify the environment
+# Production environment (current live API)
 [env.production]
-# Add any production-specific settings here
+name = "xian-api"
+route = { pattern = "xian-api.poc.workers.dev", custom_domain = true }
 
+# Staging environment for testing new features
 [env.staging]
-# Add any staging-specific settings here
+name = "xian-api-staging"
+# This will create a different subdomain for staging
+# The URL will be xian-api-staging.poc.workers.dev
