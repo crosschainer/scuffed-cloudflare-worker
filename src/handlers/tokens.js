@@ -122,38 +122,22 @@ export async function getTokenByName(request, { contractName }) {
   try {
     console.log(`Getting token data for: ${contractName}`);
     
-    // First, check if the contract exists
-    const contractQuery = `
-      query GetContract {
-        allContracts(filter: {name: {equalTo: "${contractName}"}}) {
+    // Simplified approach: Get contract and metadata in a single query
+    const query = `
+      query GetTokenData {
+        # Get contract info
+        allContracts(filter: {name: {equalTo: "${contractName}"}, xsc0001: {equalTo: true}}) {
           nodes {
             name
             created
           }
         }
-      }
-    `;
-    
-    console.log(`Executing contract query: ${contractQuery}`);
-    const contractData = await executeGraphQLQuery(contractQuery);
-    console.log(`Contract query result: ${JSON.stringify(contractData)}`);
-    
-    const contract = contractData?.data?.allContracts?.nodes?.[0];
-    
-    if (!contract) {
-      console.log(`Contract not found: ${contractName}`);
-      return new Response(JSON.stringify({ error: 'Token contract not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    console.log(`Contract found: ${JSON.stringify(contract)}`);
-    
-    // Get token metadata
-    const metaQuery = `
-      query TokenMeta {
-        allStates(filter: { key: { in: ["${contractName}.metadata:token_name", "${contractName}.metadata:token_symbol"] } }) {
+        
+        # Get token metadata
+        allStates(filter: {key: {in: [
+          "${contractName}.metadata:token_name", 
+          "${contractName}.metadata:token_symbol"
+        ]}}) {
           edges {
             node {
               key
@@ -164,43 +148,48 @@ export async function getTokenByName(request, { contractName }) {
       }
     `;
     
-    console.log(`Executing metadata query: ${metaQuery}`);
-    const metaResp = await executeGraphQLQuery(metaQuery);
-    console.log(`Metadata query result: ${JSON.stringify(metaResp)}`);
+    console.log(`Executing query: ${query}`);
+    const data = await executeGraphQLQuery(query);
+    console.log(`Query result: ${JSON.stringify(data)}`);
     
-    const metaEdges = metaResp?.data?.allStates?.edges || [];
+    // Check if contract exists
+    const contract = data?.data?.allContracts?.nodes?.[0];
     
-    // Build the metadata object
+    if (!contract) {
+      console.log(`Token contract not found: ${contractName}`);
+      return new Response(JSON.stringify({ 
+        error: 'Token contract not found', 
+        message: 'The specified contract does not exist or is not a token (XSC-0001 standard)'
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    console.log(`Contract found: ${JSON.stringify(contract)}`);
+    
+    // Process metadata
+    const metaEdges = data?.data?.allStates?.edges || [];
     const metadata = {};
+    
     metaEdges.forEach(({ node }) => {
-      const [, field] = node.key.split(":");
-      metadata[field] = node.value;
+      const parts = node.key.split(":");
+      if (parts.length === 2) {
+        const field = parts[1];
+        metadata[field] = node.value;
+      }
     });
     
     console.log(`Metadata parsed: ${JSON.stringify(metadata)}`);
-    
-    // Get token supply if available
-    const supplyQuery = `
-      query TokenSupply {
-        state(key: "${contractName}.metadata:total_supply") {
-          key
-          value
-        }
-      }
-    `;
-    
-    console.log(`Executing supply query: ${supplyQuery}`);
-    const supplyData = await executeGraphQLQuery(supplyQuery);
-    console.log(`Supply query result: ${JSON.stringify(supplyData)}`);
-    
-    const supply = supplyData?.data?.state?.value;
     
     // Format the response
     const tokenData = {
       name: contract.name,
       token_name: metadata.token_name || null,
       token_symbol: metadata.token_symbol || null,
-      supply: supply || null,
+      display: metadata.token_name
+        ? `${metadata.token_name}${metadata.token_symbol ? " (" + metadata.token_symbol + ")" : ""}`
+        : contract.name,
       created_at: contract.created
     };
     
