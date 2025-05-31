@@ -245,14 +245,14 @@ export const openapiSpec = {
             example: "con_usdc"
           },
           {
-            name: "page",
+            name: "offset",
             in: "query",
             required: false,
-            description: "Page number for pagination",
+            description: "Number of items to skip",
             schema: {
               type: "integer",
-              default: 1,
-              minimum: 1
+              default: 0,
+              minimum: 0
             }
           },
           {
@@ -290,10 +290,10 @@ export const openapiSpec = {
                     pagination: {
                       type: "object",
                       properties: {
-                        page: { type: "integer", example: 1 },
+                        offset: { type: "integer", example: 0 },
                         limit: { type: "integer", example: 10 },
                         total: { type: "integer", example: 100 },
-                        next: { type: "integer", example: 2, nullable: true },
+                        next: { type: "integer", example: 10, nullable: true },
                         previous: { type: "integer", example: null, nullable: true }
                       }
                     }

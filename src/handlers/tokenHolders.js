@@ -13,15 +13,14 @@ export async function getTokenHolders(request, { contractName }) {
     
     // Parse query parameters
     const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
     const limit = parseInt(url.searchParams.get('limit') || '10', 10);
     
     // Validate and sanitize parameters
-    const safePage = Math.max(1, page);
+    const safeOffset = Math.max(0, offset);
     const safeLimit = Math.min(Math.max(1, limit), 20); // Max 20 holders per page
-    const offset = (safePage - 1) * safeLimit;
     
-    console.log(`Page: ${safePage}, Limit: ${safeLimit}, Offset: ${offset}`);
+    console.log(`Offset: ${safeOffset}, Limit: ${safeLimit}`);
     
     // Fetch one extra to determine if there's a next page
     const fetchLimit = safeLimit + 1;
@@ -38,7 +37,7 @@ export async function getTokenHolders(request, { contractName }) {
           }
           orderBy: VALUE_NUMERIC_DESC
           first: ${fetchLimit}
-          offset: ${offset}
+          offset: ${safeOffset}
         ) {
           totalCount
           edges { 
@@ -64,10 +63,10 @@ export async function getTokenHolders(request, { contractName }) {
     if (!edges.length) {
       // If we're on page 1 with no results, return empty array
       // If we're beyond page 1 with no results but there are holders, we're out of range
-      if (safePage > 1 && totalCount > 0) {
+      if (safeOffset > 0 && totalCount > 0 && safeOffset >= totalCount) {
         return json({
-          error: "Page out of range",
-          message: `The requested page ${safePage} exceeds the available data. Total holders: ${totalCount}, max page: ${Math.ceil(totalCount / safeLimit)}`
+          error: "Offset out of range",
+          message: `The requested offset ${safeOffset} exceeds the available data. Total holders: ${totalCount}`
         }, { status: 400 });
       }
       
@@ -75,11 +74,11 @@ export async function getTokenHolders(request, { contractName }) {
         contractName,
         holders: [],
         pagination: {
-          page: safePage,
+          offset: safeOffset,
           limit: safeLimit,
           total: totalCount,
           next: null,
-          previous: safePage > 1 ? safePage - 1 : null
+          previous: null
         }
       }, { status: 200 });
     }
@@ -103,11 +102,11 @@ export async function getTokenHolders(request, { contractName }) {
       contractName,
       holders,
       pagination: {
-        page: safePage,
+        offset: safeOffset,
         limit: safeLimit,
         total: totalCount,
-        next: hasMore ? safePage + 1 : null,
-        previous: safePage > 1 ? safePage - 1 : null
+        next: hasMore ? safeOffset + safeLimit : null,
+        previous: safeOffset > 0 ? Math.max(0, safeOffset - safeLimit) : null
       }
     };
     
