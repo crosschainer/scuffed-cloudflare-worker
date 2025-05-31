@@ -21,6 +21,8 @@ export async function getTokenHolders(request, { contractName }) {
     const safeLimit = Math.min(Math.max(1, limit), 20); // Max 20 holders per page
     const offset = (safePage - 1) * safeLimit;
     
+    console.log(`Page: ${safePage}, Limit: ${safeLimit}, Offset: ${offset}`);
+    
     // Fetch one extra to determine if there's a next page
     const fetchLimit = safeLimit + 1;
     
@@ -57,7 +59,18 @@ export async function getTokenHolders(request, { contractName }) {
     const edges = data?.data?.allStates?.edges || [];
     const totalCount = data?.data?.allStates?.totalCount || 0;
     
+    console.log(`Got ${edges.length} holders, total count: ${totalCount}`);
+    
     if (!edges.length) {
+      // If we're on page 1 with no results, return empty array
+      // If we're beyond page 1 with no results but there are holders, we're out of range
+      if (safePage > 1 && totalCount > 0) {
+        return json({
+          error: "Page out of range",
+          message: `The requested page ${safePage} exceeds the available data. Total holders: ${totalCount}, max page: ${Math.ceil(totalCount / safeLimit)}`
+        }, { status: 400 });
+      }
+      
       return json({
         contractName,
         holders: [],
@@ -68,7 +81,7 @@ export async function getTokenHolders(request, { contractName }) {
           next: null,
           previous: safePage > 1 ? safePage - 1 : null
         }
-      });
+      }, { status: 200 });
     }
     
     // Determine if there's a next page
@@ -95,7 +108,7 @@ export async function getTokenHolders(request, { contractName }) {
         next: hasMore ? safePage + 1 : null,
         previous: safePage > 1 ? safePage - 1 : null
       }
-    });
+    }, { status: 200 });
   } catch (error) {
     console.error(`Error getting token holders: ${error.message}`);
     console.error(error.stack);
