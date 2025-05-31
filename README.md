@@ -16,7 +16,25 @@ A modular Cloudflare Worker that provides API endpoints for Xian cryptocurrency 
 
 ### Market Endpoints
 - `GET /markets` - Get a list of all markets (token pairs) with price information
+  - Query parameters:
+    - `limit` - Maximum number of markets to return (default: 100)
+    - `offset` - Number of markets to skip (default: 0)
+  - Response includes:
+    - Token symbols and contract names
+    - Current prices for both tokens in the pair
+    - 24-hour price change percentages
+    - USD prices (when paired with stablecoins)
+    - 24-hour trading volume
+    - Pagination information
 - `GET /tokens/{contractName}/markets` - Get markets for a specific token with price information
+  - Response includes:
+    - All markets where the specified token is traded
+    - Price from the token's perspective
+    - Paired token information
+    - 24-hour price change percentage
+    - USD price (when paired with stablecoins)
+    - 24-hour trading volume
+    - Last traded timestamp
 
 ### Documentation
 - `GET /` - Swagger UI documentation
