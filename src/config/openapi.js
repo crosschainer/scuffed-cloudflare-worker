@@ -197,7 +197,6 @@ export const openapiSpec = {
                     name: { type: "string", example: "con_usdc" },
                     token_name: { type: "string", example: "USDC" },
                     token_symbol: { type: "string", example: "USDC" },
-                    token_decimals: { type: "integer", example: 8 },
                     supply: { type: "string", example: "1000000.00000000" },
                     created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
                   }
