@@ -1,0 +1,54 @@
+/**
+ * Router for handling API requests
+ */
+
+import { json } from '../utils/response.js';
+import { withCache } from '../middleware/cache.js';
+import { totalSupplyHandler } from '../handlers/totalSupply.js';
+import { circulatingSupplyHandler } from '../handlers/circulatingSupply.js';
+import { totalHoldersHandler } from '../handlers/totalHolders.js';
+import { swaggerHandler } from '../handlers/swagger.js';
+
+/**
+ * A mapping of normalized pathname → handler(request, event)
+ */
+export const ROUTES = {
+  "/": swaggerHandler,
+  "/openapi.json": swaggerHandler,
+  "/total-supply": totalSupplyHandler,
+  "/circulating-supply": circulatingSupplyHandler,
+  "/total-holders": totalHoldersHandler,
+};
+
+/**
+ * Main request handler that routes requests to the appropriate handler
+ * 
+ * @param {FetchEvent} event - The fetch event
+ * @returns {Promise<Response>} The response from the appropriate handler
+ */
+export async function handleRequest(event) {
+  const request = event.request;
+  const url = new URL(request.url);
+
+  // Normalize pathname: strip trailing slashes → if empty, set to "/"
+  let pathname = url.pathname.replace(/\/+$/, "");
+  if (pathname === "") {
+    pathname = "/";
+  }
+
+  // Only allow GET on all routes
+  if (request.method !== "GET") {
+    return json({ error: "Only GET allowed." }, { status: 405 });
+  }
+
+  // Lookup which handler should run
+  const routeHandler = ROUTES[pathname];
+  if (!routeHandler) {
+    return json({ error: "Route not found" }, { status: 404 });
+  }
+
+  // Wrap the handler in a cache
+  return await withCache(pathname, request, event, () =>
+    routeHandler(request, event)
+  );
+}

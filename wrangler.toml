@@ -1,0 +1,13 @@
+name = "xian-api"
+main = "src/index.js"
+compatibility_date = "2023-05-18"
+
+[build]
+command = ""
+
+# Specify the environment
+[env.production]
+# Add any production-specific settings here
+
+[env.staging]
+# Add any staging-specific settings here

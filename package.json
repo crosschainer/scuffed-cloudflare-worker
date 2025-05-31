@@ -1,0 +1,17 @@
+{
+  "name": "xian-api",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker API for Xian cryptocurrency data",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "publish": "wrangler publish",
+    "format": "prettier --write '**/*.{js,css,json,md}'"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "prettier": "^2.8.8",
+    "wrangler": "^3.0.0"
+  }
+}
