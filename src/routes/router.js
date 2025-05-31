@@ -59,9 +59,8 @@ export async function handleRequest(event) {
   const holdersMatch = pathname.match(/^\/tokens\/([^\/]+)\/holders$/);
   if (holdersMatch) {
     const contractName = holdersMatch[1];
-    return await withCache(pathname + url.search, request, event, () =>
-      getTokenHolders(request, { contractName })
-    );
+    // Don't cache this endpoint as it depends on query parameters
+    return getTokenHolders(request, { contractName });
   }
 
   // Lookup which handler should run for static routes
