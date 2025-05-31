@@ -55,6 +55,14 @@ export async function getAllMarkets(request) {
     const total = pairs.length;
     const paginatedPairs = pairs.slice(offset, offset + limit);
     
+    // Fetch token symbols for all tokens in the pairs
+    const allTokens = new Set();
+    paginatedPairs.forEach(pair => {
+      allTokens.add(pair.token0);
+      allTokens.add(pair.token1);
+    });
+    const tokenSymbols = await fetchTokenSymbols([...allTokens]);
+    
     // Fetch latest prices for each pair
     const marketsWithPrices = await Promise.all(
       paginatedPairs.map(async (pair) => {
@@ -69,12 +77,29 @@ export async function getAllMarkets(request) {
         const changePct0 = price0_24h > 0 ? ((price0 - price0_24h) / price0_24h) * 100 : 0;
         const changePct1 = price1_24h > 0 ? ((price1 - price1_24h) / price1_24h) * 100 : 0;
         
+        // Calculate USD price if paired with a stablecoin
+        let usdPrice0 = null;
+        let usdPrice1 = null;
+        
+        const stablecoins = ["con_usdc", "con_usdt", "con_dai"];
+        
+        if (stablecoins.includes(pair.token1) && price0 > 0) {
+          usdPrice0 = price0;
+        } else if (stablecoins.includes(pair.token0) && price1 > 0) {
+          usdPrice1 = price1;
+        }
+        
         return {
           ...pair,
-          price0,
-          price1,
-          changePct0,
-          changePct1
+          token0Symbol: tokenSymbols[pair.token0] || pair.token0,
+          token1Symbol: tokenSymbols[pair.token1] || pair.token1,
+          price0: price0 || null,
+          price1: price1 || null,
+          changePct0: price0 > 0 ? changePct0 : null,
+          changePct1: price1 > 0 ? changePct1 : null,
+          usdPrice0,
+          usdPrice1,
+          volume24h: await calculateVolume(pair.pair)
         };
       })
     );
@@ -155,6 +180,7 @@ export async function getMarketsForToken(request, { contractName }) {
         const baseIsToken0 = p.token0 === contractName;
         const pairedToken = baseIsToken0 ? p.token1 : p.token0;
         const pairedSymbol = tokenSymbols[pairedToken] || pairedToken;
+        const baseSymbol = tokenSymbols[contractName] || contractName;
         
         // Get current price
         let price = await getLatestPrice(p.pair, baseIsToken0);
@@ -178,22 +204,30 @@ export async function getMarketsForToken(request, { contractName }) {
         
         // Calculate USD price if paired with a stablecoin
         let usdPrice = null;
-        if (pairedToken === "currency" || 
-            pairedToken === "con_usdc" || 
-            pairedToken === "con_usdt") {
+        const stablecoins = ["con_usdc", "con_usdt", "con_dai"];
+        
+        if (stablecoins.includes(pairedToken)) {
           usdPrice = price;
         }
+        
+        // Calculate 24h volume
+        const volume24h = await calculateVolume(p.pair);
         
         return {
           pair: p.pair,
           token0: p.token0,
           token1: p.token1,
-          label: `${p.token0} / ${p.token1}`,
+          token0Symbol: tokenSymbols[p.token0] || p.token0,
+          token1Symbol: tokenSymbols[p.token1] || p.token1,
+          label: `${baseSymbol} / ${pairedSymbol}`,
           price,
           pairedToken,
           pairedSymbol,
+          baseSymbol,
           changePct,
-          usdPrice
+          usdPrice,
+          volume24h,
+          lastTraded: await getLastTradedTime(p.pair)
         };
       })
     );
@@ -303,6 +337,99 @@ async function getHistoricalPrice(pair, baseIsToken0) {
   } catch (error) {
     console.error(`24h historical price fetch failed for ${pair}:`, error);
     return 0;
+  }
+}
+
+/**
+ * Calculate 24-hour trading volume for a pair
+ * 
+ * @param {string} pair - The pair contract name
+ * @returns {Promise<number>} The 24-hour trading volume
+ */
+async function calculateVolume(pair) {
+  try {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const formatted = yesterday.toISOString().replace("Z", "");
+    
+    const query = `
+      query {
+        allEvents(
+          condition: {contract: "con_pairs", event: "Swap"},
+          filter: {
+            dataIndexed: {contains: {pair: "${pair}"}},
+            created: {greaterThanOrEqualTo: "${formatted}"}
+          }
+        ) {
+          edges {
+            node {
+              data
+            }
+          }
+        }
+      }
+    `;
+    
+    const result = await executeGraphQLQuery(query);
+    const edges = result.data?.allEvents?.edges || [];
+    
+    let volume = 0;
+    edges.forEach(({ node }) => {
+      const data = node.data || {};
+      const a0in = parseFloat(data.amount0In || 0);
+      const a1in = parseFloat(data.amount1In || 0);
+      const a0out = parseFloat(data.amount0Out || 0);
+      const a1out = parseFloat(data.amount1Out || 0);
+      
+      // Sum the total volume (in + out) for both tokens
+      volume += a0in + a1in + a0out + a1out;
+    });
+    
+    return volume;
+  } catch (error) {
+    console.error(`Volume calculation failed for ${pair}:`, error);
+    return 0;
+  }
+}
+
+/**
+ * Get the timestamp of the last trade for a pair
+ * 
+ * @param {string} pair - The pair contract name
+ * @returns {Promise<string|null>} ISO timestamp of the last trade or null
+ */
+async function getLastTradedTime(pair) {
+  try {
+    const query = `
+      query {
+        allEvents(
+          condition: {contract: "con_pairs", event: "Swap"},
+          filter: {
+            dataIndexed: {contains: {pair: "${pair}"}}
+          },
+          orderBy: CREATED_DESC,
+          first: 1
+        ) {
+          edges {
+            node {
+              created
+            }
+          }
+        }
+      }
+    `;
+    
+    const result = await executeGraphQLQuery(query);
+    const edges = result.data?.allEvents?.edges || [];
+    
+    if (edges.length > 0) {
+      return edges[0].node.created;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Last traded time fetch failed for ${pair}:`, error);
+    return null;
   }
 }
 

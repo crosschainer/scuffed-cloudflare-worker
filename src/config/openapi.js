@@ -377,11 +377,16 @@ export const openapiSpec = {
                           pair: { type: "string", example: "con_pair_currency_usdc" },
                           token0: { type: "string", example: "currency" },
                           token1: { type: "string", example: "con_usdc" },
-                          label: { type: "string", example: "currency / con_usdc" },
-                          price0: { type: "number", example: 0.12 },
-                          price1: { type: "number", example: 8.33 },
-                          changePct0: { type: "number", example: 2.5 },
-                          changePct1: { type: "number", example: -1.2 }
+                          token0Symbol: { type: "string", example: "XIAN" },
+                          token1Symbol: { type: "string", example: "USDC" },
+                          label: { type: "string", example: "XIAN / USDC" },
+                          price0: { type: ["number", "null"], example: 0.12 },
+                          price1: { type: ["number", "null"], example: 8.33 },
+                          changePct0: { type: ["number", "null"], example: 2.5 },
+                          changePct1: { type: ["number", "null"], example: -1.2 },
+                          usdPrice0: { type: ["number", "null"], example: 0.12 },
+                          usdPrice1: { type: ["number", "null"], example: null },
+                          volume24h: { type: "number", example: 15000 }
                         }
                       }
                     },
@@ -449,12 +454,17 @@ export const openapiSpec = {
                           pair: { type: "string", example: "con_pair_currency_usdc" },
                           token0: { type: "string", example: "currency" },
                           token1: { type: "string", example: "con_usdc" },
-                          label: { type: "string", example: "currency / con_usdc" },
+                          token0Symbol: { type: "string", example: "XIAN" },
+                          token1Symbol: { type: "string", example: "USDC" },
+                          label: { type: "string", example: "XIAN / USDC" },
                           price: { type: "number", example: 0.12 },
                           pairedToken: { type: "string", example: "con_usdc" },
                           pairedSymbol: { type: "string", example: "USDC" },
+                          baseSymbol: { type: "string", example: "XIAN" },
                           changePct: { type: "number", example: 2.5 },
-                          usdPrice: { type: ["number", "null"], example: 0.12 }
+                          usdPrice: { type: ["number", "null"], example: 0.12 },
+                          volume24h: { type: "number", example: 15000 },
+                          lastTraded: { type: ["string", "null"], example: "2025-05-30T12:34:56.789" }
                         }
                       }
                     }
