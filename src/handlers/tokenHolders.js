@@ -98,7 +98,8 @@ export async function getTokenHolders(request, { contractName }) {
       };
     });
     
-    return json({
+    // Log the response we're about to send
+    const response = {
       contractName,
       holders,
       pagination: {
@@ -108,7 +109,11 @@ export async function getTokenHolders(request, { contractName }) {
         next: hasMore ? safePage + 1 : null,
         previous: safePage > 1 ? safePage - 1 : null
       }
-    }, { status: 200 });
+    };
+    
+    console.log(`Sending response: ${JSON.stringify(response)}`);
+    
+    return json(response, { status: 200 });
   } catch (error) {
     console.error(`Error getting token holders: ${error.message}`);
     console.error(error.stack);
