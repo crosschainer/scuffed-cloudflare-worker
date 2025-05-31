@@ -1,6 +1,7 @@
 name = "xian-api"
 main = "src/index.js"
 compatibility_date = "2023-05-18"
+account_id = "9f5eccdd843ab1ee026067fab55893f0"
 
 [build]
 command = ""
