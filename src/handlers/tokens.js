@@ -54,6 +54,10 @@ export async function getAllTokens(request) {
     nodes.forEach(({ name }) => {
       metaKeys.push(`${name}.metadata:token_name`);
       metaKeys.push(`${name}.metadata:token_symbol`);
+      metaKeys.push(`${name}.metadata:token_logo_url`);
+      metaKeys.push(`${name}.metadata:token_website`);
+      metaKeys.push(`${name}.metadata:total_supply`);
+      metaKeys.push(`${name}.metadata:operator`);
     });
     
     // Second query - pull the metadata in one call
@@ -88,6 +92,10 @@ export async function getAllTokens(request) {
         contractName: c.name,
         token_name: m.token_name || null,
         token_symbol: m.token_symbol || null,
+        token_logo_url: m.token_logo_url || null,
+        token_website: m.token_website || null,
+        total_supply: m.total_supply ? parseFloat(m.total_supply) : null,
+        operator: m.operator || null,
         display,
         created_at: c.created
       };
@@ -136,7 +144,11 @@ export async function getTokenByName(request, { contractName }) {
         # Get token metadata
         allStates(filter: {key: {in: [
           "${contractName}.metadata:token_name", 
-          "${contractName}.metadata:token_symbol"
+          "${contractName}.metadata:token_symbol",
+          "${contractName}.metadata:token_logo_url",
+          "${contractName}.metadata:token_website",
+          "${contractName}.metadata:total_supply",
+          "${contractName}.metadata:operator"
         ]}}) {
           edges {
             node {
@@ -187,6 +199,10 @@ export async function getTokenByName(request, { contractName }) {
       contractName: contract.name,
       token_name: metadata.token_name || null,
       token_symbol: metadata.token_symbol || null,
+      token_logo_url: metadata.token_logo_url || null,
+      token_website: metadata.token_website || null,
+      total_supply: metadata.total_supply ? parseFloat(metadata.total_supply) : null,
+      operator: metadata.operator || null,
       display: metadata.token_name
         ? `${metadata.token_name}${metadata.token_symbol ? " (" + metadata.token_symbol + ")" : ""}`
         : contract.name,

@@ -146,6 +146,10 @@ export const openapiSpec = {
                           contractName: { type: "string", example: "con_usdc" },
                           token_name: { type: "string", example: "USDC" },
                           token_symbol: { type: "string", example: "USDC" },
+                          token_logo_url: { type: "string", example: "https://example.com/logo.png", nullable: true },
+                          token_website: { type: "string", example: "https://www.example.com", nullable: true },
+                          total_supply: { type: "number", example: 1000000, nullable: true },
+                          operator: { type: "string", example: "k:abc123...", nullable: true },
                           display: { type: "string", example: "USDC (USDC)" },
                           created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
                         }
@@ -197,6 +201,10 @@ export const openapiSpec = {
                     contractName: { type: "string", example: "con_usdc" },
                     token_name: { type: "string", example: "USDC" },
                     token_symbol: { type: "string", example: "USDC" },
+                    token_logo_url: { type: "string", example: "https://example.com/logo.png", nullable: true },
+                    token_website: { type: "string", example: "https://www.example.com", nullable: true },
+                    total_supply: { type: "number", example: 1000000, nullable: true },
+                    operator: { type: "string", example: "k:abc123...", nullable: true },
                     display: { type: "string", example: "USDC (USDC)" },
                     created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
                   }
