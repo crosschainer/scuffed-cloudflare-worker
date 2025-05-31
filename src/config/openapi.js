@@ -378,8 +378,7 @@ export const openapiSpec = {
                         type: "object",
                         properties: {
                           name: { type: "string", example: "con_mycontract" },
-                          created_at: { type: "string", example: "2023-01-01T00:00:00Z" },
-                          submission_date: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                          created_at: { type: "string", example: "2023-01-01T00:00:00Z" }
                         }
                       }
                     },
@@ -442,8 +441,7 @@ export const openapiSpec = {
                   properties: {
                     name: { type: "string", example: "con_mycontract" },
                     code: { type: "string", example: "(module...)" },
-                    created_at: { type: "string", example: "2023-01-01T00:00:00Z" },
-                    submission_date: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                    created_at: { type: "string", example: "2023-01-01T00:00:00Z" }
                   }
                 }
               }
