@@ -50,7 +50,7 @@ export async function handleRequest(event) {
   const tokenMatch = pathname.match(/^\/tokens\/([^\/]+)$/);
   if (tokenMatch) {
     const contractName = tokenMatch[1];
-    return await withCache(pathname, request, event, () =>
+    return await withCache(pathname + url.search, request, event, () =>
       getTokenByName(request, { contractName })
     );
   }
@@ -59,8 +59,10 @@ export async function handleRequest(event) {
   const holdersMatch = pathname.match(/^\/tokens\/([^\/]+)\/holders$/);
   if (holdersMatch) {
     const contractName = holdersMatch[1];
-    // Don't cache this endpoint as it depends on query parameters
-    return getTokenHolders(request, { contractName });
+    // Cache this endpoint like other endpoints
+    return await withCache(pathname + url.search, request, event, () =>
+      getTokenHolders(request, { contractName })
+    );
   }
 
   // Lookup which handler should run for static routes
@@ -69,8 +71,8 @@ export async function handleRequest(event) {
     return json({ error: "Route not found" }, { status: 404 });
   }
 
-  // Wrap the handler in a cache
-  return await withCache(pathname, request, event, () =>
+  // Wrap the handler in a cache, include query parameters in cache key
+  return await withCache(pathname + url.search, request, event, () =>
     routeHandler(request, event)
   );
 }
