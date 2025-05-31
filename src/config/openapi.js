@@ -22,6 +22,10 @@ export const openapiSpec = {
       name: "Tokens",
       description: "Endpoints related to token contracts and metadata",
     },
+    {
+      name: "Contracts",
+      description: "Endpoints related to smart contracts",
+    },
   ],
   paths: {
     "/total-supply": {
@@ -323,6 +327,149 @@ export const openapiSpec = {
                   type: "object",
                   properties: {
                     error: { type: "string", example: "Failed to fetch token holders" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contracts": {
+      get: {
+        tags: ["Contracts"],
+        summary: "Get all contracts",
+        description: "Returns a paginated list of all contracts",
+        parameters: [
+          {
+            name: "offset",
+            in: "query",
+            description: "Number of items to skip",
+            schema: {
+              type: "integer",
+              default: 0,
+              minimum: 0
+            }
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum number of items to return (max 20)",
+            schema: {
+              type: "integer",
+              default: 10,
+              minimum: 1,
+              maximum: 20
+            }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns a list of contracts with pagination information",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    contracts: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string", example: "con_mycontract" },
+                          created_at: { type: "string", example: "2023-01-01T00:00:00Z" },
+                          submission_date: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        offset: { type: "integer", example: 0 },
+                        limit: { type: "integer", example: 10 },
+                        total: { type: "integer", example: 100 },
+                        next: { type: "integer", example: 10, nullable: true },
+                        previous: { type: "integer", example: null, nullable: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch contracts" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contracts/{contractName}": {
+      get: {
+        tags: ["Contracts"],
+        summary: "Get code for a specific contract",
+        description: "Returns the code and metadata for a specific contract by name",
+        parameters: [
+          {
+            name: "contractName",
+            in: "path",
+            required: true,
+            description: "Name of the contract",
+            schema: {
+              type: "string"
+            },
+            example: "con_mycontract"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns contract code and metadata",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", example: "con_mycontract" },
+                    code: { type: "string", example: "(module...)" },
+                    created_at: { type: "string", example: "2023-01-01T00:00:00Z" },
+                    submission_date: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            description: "Contract not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Contract not found" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch contract code" },
                     message: { type: "string", example: "Error message details" }
                   }
                 }

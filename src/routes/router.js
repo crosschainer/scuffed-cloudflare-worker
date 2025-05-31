@@ -10,6 +10,7 @@ import { totalHoldersHandler } from '../handlers/totalHolders.js';
 import { swaggerHandler } from '../handlers/swagger.js';
 import { getAllTokens, getTokenByName } from '../handlers/tokens.js';
 import { getTokenHolders } from '../handlers/tokenHolders.js';
+import { getAllContracts, getContractCode } from '../handlers/contracts.js';
 
 /**
  * A mapping of normalized pathname → handler(request, event)
@@ -21,6 +22,7 @@ export const ROUTES = {
   "/circulating-supply": circulatingSupplyHandler,
   "/total-holders": totalHoldersHandler,
   "/tokens": getAllTokens,
+  "/contracts": getAllContracts,
 };
 
 /**
@@ -62,6 +64,15 @@ export async function handleRequest(event) {
     // Cache this endpoint like other endpoints
     return await withCache(pathname + url.search, request, event, () =>
       getTokenHolders(request, { contractName })
+    );
+  }
+  
+  // Contract code route: /contracts/{contractName}
+  const contractMatch = pathname.match(/^\/contracts\/([^\/]+)$/);
+  if (contractMatch) {
+    const contractName = contractMatch[1];
+    return await withCache(pathname + url.search, request, event, () =>
+      getContractCode(request, { contractName }, event.env)
     );
   }
 
