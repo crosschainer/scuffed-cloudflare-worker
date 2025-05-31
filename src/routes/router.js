@@ -72,7 +72,7 @@ export async function handleRequest(event) {
   if (contractMatch) {
     const contractName = contractMatch[1];
     return await withCache(pathname + url.search, request, event, () =>
-      getContractCode(request, { contractName }, event.env)
+      getContractCode(request, { contractName })
     );
   }
 

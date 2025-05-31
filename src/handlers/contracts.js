@@ -82,10 +82,9 @@ export async function getAllContracts(request, params, env) {
  * Get contract code by contract name
  * @param {Request} request - The incoming request
  * @param {Object} params - URL parameters
- * @param {Object} env - Environment variables
  * @returns {Response} JSON response with contract code
  */
-export async function getContractCode(request, params, env) {
+export async function getContractCode(request, params) {
   try {
     const { contractName } = params;
 
