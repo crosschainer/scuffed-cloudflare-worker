@@ -8,6 +8,7 @@ import { totalSupplyHandler } from '../handlers/totalSupply.js';
 import { circulatingSupplyHandler } from '../handlers/circulatingSupply.js';
 import { totalHoldersHandler } from '../handlers/totalHolders.js';
 import { swaggerHandler } from '../handlers/swagger.js';
+import { getAllTokens, getTokenByName } from '../handlers/tokens.js';
 
 /**
  * A mapping of normalized pathname → handler(request, event)
@@ -18,6 +19,7 @@ export const ROUTES = {
   "/total-supply": totalSupplyHandler,
   "/circulating-supply": circulatingSupplyHandler,
   "/total-holders": totalHoldersHandler,
+  "/tokens": getAllTokens,
 };
 
 /**
@@ -41,7 +43,16 @@ export async function handleRequest(event) {
     return json({ error: "Only GET allowed." }, { status: 405 });
   }
 
-  // Lookup which handler should run
+  // Check for dynamic routes first
+  const tokenMatch = pathname.match(/^\/tokens\/([^\/]+)$/);
+  if (tokenMatch) {
+    const contractName = tokenMatch[1];
+    return await withCache(pathname, request, event, () =>
+      getTokenByName(request, { contractName })
+    );
+  }
+
+  // Lookup which handler should run for static routes
   const routeHandler = ROUTES[pathname];
   if (!routeHandler) {
     return json({ error: "Route not found" }, { status: 404 });

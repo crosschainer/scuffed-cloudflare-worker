@@ -18,6 +18,10 @@ export const openapiSpec = {
       name: "Supply",
       description: "Endpoints related to coin supply",
     },
+    {
+      name: "Tokens",
+      description: "Endpoints related to token contracts and metadata",
+    },
   ],
   paths: {
     "/total-supply": {
@@ -98,5 +102,124 @@ export const openapiSpec = {
         },
       },
     },
+    "/tokens": {
+      get: {
+        tags: ["Tokens"],
+        summary: "Get all tokens with metadata",
+        description: "Returns a paginated list of all tokens with their metadata",
+        parameters: [
+          {
+            name: "offset",
+            in: "query",
+            description: "Number of items to skip",
+            schema: {
+              type: "integer",
+              default: 0,
+              minimum: 0
+            }
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum number of items to return (max 100)",
+            schema: {
+              type: "integer",
+              default: 10,
+              minimum: 1,
+              maximum: 100
+            }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns a list of tokens with pagination information",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    tokens: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string", example: "con_usdc" },
+                          token_name: { type: "string", example: "USDC" },
+                          token_symbol: { type: "string", example: "USDC" },
+                          display: { type: "string", example: "USDC (USDC)" },
+                          created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        offset: { type: "integer", example: 0 },
+                        limit: { type: "integer", example: 10 },
+                        total: { type: "integer", example: 100 },
+                        next: { type: "integer", example: 10, nullable: true },
+                        previous: { type: "integer", example: null, nullable: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens/{contractName}": {
+      get: {
+        tags: ["Tokens"],
+        summary: "Get metadata for a specific token",
+        description: "Returns detailed metadata for a specific token by contract name",
+        parameters: [
+          {
+            name: "contractName",
+            in: "path",
+            required: true,
+            description: "Contract name of the token",
+            schema: {
+              type: "string"
+            },
+            example: "con_usdc"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns token metadata",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", example: "con_usdc" },
+                    token_name: { type: "string", example: "USDC" },
+                    token_symbol: { type: "string", example: "USDC" },
+                    token_decimals: { type: "integer", example: 8 },
+                    supply: { type: "string", example: "1000000.00000000" },
+                    created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            description: "Token contract not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Token contract not found" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   },
 };
