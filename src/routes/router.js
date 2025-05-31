@@ -9,6 +9,7 @@ import { circulatingSupplyHandler } from '../handlers/circulatingSupply.js';
 import { totalHoldersHandler } from '../handlers/totalHolders.js';
 import { swaggerHandler } from '../handlers/swagger.js';
 import { getAllTokens, getTokenByName } from '../handlers/tokens.js';
+import { getTokenHolders } from '../handlers/tokenHolders.js';
 
 /**
  * A mapping of normalized pathname → handler(request, event)
@@ -44,11 +45,22 @@ export async function handleRequest(event) {
   }
 
   // Check for dynamic routes first
+  
+  // Token metadata route: /tokens/{contractName}
   const tokenMatch = pathname.match(/^\/tokens\/([^\/]+)$/);
   if (tokenMatch) {
     const contractName = tokenMatch[1];
     return await withCache(pathname, request, event, () =>
       getTokenByName(request, { contractName })
+    );
+  }
+  
+  // Token holders route: /tokens/{contractName}/holders
+  const holdersMatch = pathname.match(/^\/tokens\/([^\/]+)\/holders$/);
+  if (holdersMatch) {
+    const contractName = holdersMatch[1];
+    return await withCache(pathname + url.search, request, event, () =>
+      getTokenHolders(request, { contractName })
     );
   }
 

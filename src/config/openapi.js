@@ -227,6 +227,110 @@ export const openapiSpec = {
           }
         }
       }
+    },
+    "/tokens/{contractName}/holders": {
+      get: {
+        tags: ["Tokens"],
+        summary: "Get holders of a specific token",
+        description: "Returns a paginated list of token holders with their balances",
+        parameters: [
+          {
+            name: "contractName",
+            in: "path",
+            required: true,
+            description: "Contract name of the token",
+            schema: {
+              type: "string"
+            },
+            example: "con_usdc"
+          },
+          {
+            name: "page",
+            in: "query",
+            required: false,
+            description: "Page number for pagination",
+            schema: {
+              type: "integer",
+              default: 1,
+              minimum: 1
+            }
+          },
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            description: "Number of holders per page (max 20)",
+            schema: {
+              type: "integer",
+              default: 10,
+              minimum: 1,
+              maximum: 20
+            }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns token holders with pagination",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    contractName: { type: "string", example: "con_usdc" },
+                    holders: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          address: { type: "string", example: "k:abc123..." },
+                          balance: { type: "number", example: 1000.5 }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        page: { type: "integer", example: 1 },
+                        limit: { type: "integer", example: 10 },
+                        total: { type: "integer", example: 100 },
+                        next: { type: "integer", example: 2, nullable: true },
+                        previous: { type: "integer", example: null, nullable: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            description: "Token contract not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Token contract not found" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch token holders" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
 };
