@@ -22,6 +22,10 @@ export const openapiSpec = {
       name: "Tokens",
       description: "Endpoints related to token contracts and metadata",
     },
+    {
+      name: "Markets",
+      description: "Endpoints related to token markets and pricing",
+    },
   ],
   paths: {
     "/total-supply": {
@@ -324,6 +328,162 @@ export const openapiSpec = {
                   properties: {
                     error: { type: "string", example: "Failed to fetch token holders" },
                     message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/markets": {
+      get: {
+        tags: ["Markets"],
+        summary: "Get all markets (token pairs)",
+        description: "Returns a list of all markets (token pairs) with price information",
+        parameters: [
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum number of markets to return",
+            schema: {
+              type: "integer",
+              default: 100
+            }
+          },
+          {
+            name: "offset",
+            in: "query",
+            description: "Number of markets to skip",
+            schema: {
+              type: "integer",
+              default: 0
+            }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "List of markets with price information",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    markets: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          pair: { type: "string", example: "con_pair_currency_usdc" },
+                          token0: { type: "string", example: "currency" },
+                          token1: { type: "string", example: "con_usdc" },
+                          label: { type: "string", example: "currency / con_usdc" },
+                          price0: { type: "number", example: 0.12 },
+                          price1: { type: "number", example: 8.33 },
+                          changePct0: { type: "number", example: 2.5 },
+                          changePct1: { type: "number", example: -1.2 }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        offset: { type: "integer", example: 0 },
+                        limit: { type: "integer", example: 100 },
+                        total: { type: "integer", example: 57 },
+                        next: { type: ["integer", "null"], example: 100 },
+                        previous: { type: ["integer", "null"], example: null }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch markets data" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tokens/{contractName}/markets": {
+      get: {
+        tags: ["Markets"],
+        summary: "Get markets for a specific token",
+        description: "Returns markets (token pairs) that include the specified token with price information",
+        parameters: [
+          {
+            name: "contractName",
+            in: "path",
+            required: true,
+            description: "Token contract name",
+            schema: {
+              type: "string"
+            }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Markets for the specified token",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    contractName: { type: "string", example: "currency" },
+                    markets: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          pair: { type: "string", example: "con_pair_currency_usdc" },
+                          token0: { type: "string", example: "currency" },
+                          token1: { type: "string", example: "con_usdc" },
+                          label: { type: "string", example: "currency / con_usdc" },
+                          price: { type: "number", example: 0.12 },
+                          pairedToken: { type: "string", example: "con_usdc" },
+                          pairedSymbol: { type: "string", example: "USDC" },
+                          changePct: { type: "number", example: 2.5 },
+                          usdPrice: { type: ["number", "null"], example: 0.12 }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            description: "Token not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Token not found" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch markets data for token" }
                   }
                 }
               }

@@ -10,6 +10,7 @@ import { totalHoldersHandler } from '../handlers/totalHolders.js';
 import { swaggerHandler } from '../handlers/swagger.js';
 import { getAllTokens, getTokenByName } from '../handlers/tokens.js';
 import { getTokenHolders } from '../handlers/tokenHolders.js';
+import { getAllMarkets, getMarketsForToken } from '../handlers/markets.js';
 
 /**
  * A mapping of normalized pathname → handler(request, event)
@@ -21,6 +22,7 @@ export const ROUTES = {
   "/circulating-supply": circulatingSupplyHandler,
   "/total-holders": totalHoldersHandler,
   "/tokens": getAllTokens,
+  "/markets": getAllMarkets,
 };
 
 /**
@@ -62,6 +64,15 @@ export async function handleRequest(event) {
     // Cache this endpoint like other endpoints
     return await withCache(pathname + url.search, request, event, () =>
       getTokenHolders(request, { contractName })
+    );
+  }
+  
+  // Markets for a specific token route: /tokens/{contractName}/markets
+  const tokenMarketsMatch = pathname.match(/^\/tokens\/([^\/]+)\/markets$/);
+  if (tokenMarketsMatch) {
+    const contractName = tokenMarketsMatch[1];
+    return await withCache(pathname + url.search, request, event, () =>
+      getMarketsForToken(request, { contractName })
     );
   }
 
