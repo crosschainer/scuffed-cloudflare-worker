@@ -21,6 +21,7 @@ export async function getAllTokens(request) {
         allContracts(
           first: ${safeLimit}
           offset: ${offset}
+          filter: {xsc0001: {equalTo: true}}
           orderBy: CREATED_DESC
         ) {
           totalCount
@@ -152,7 +153,7 @@ export async function getTokenByName(request, { contractName }) {
     // Get token metadata
     const metaQuery = `
       query TokenMeta {
-        allStates(filter: { key: { in: ["${contractName}.metadata:token_name", "${contractName}.metadata:token_symbol", "${contractName}.metadata:token_decimals"] } }) {
+        allStates(filter: { key: { in: ["${contractName}.metadata:token_name", "${contractName}.metadata:token_symbol"] } }) {
           edges {
             node {
               key
@@ -181,7 +182,7 @@ export async function getTokenByName(request, { contractName }) {
     // Get token supply if available
     const supplyQuery = `
       query TokenSupply {
-        state(key: "${contractName}.supply") {
+        state(key: "${contractName}.metadata:total_supply") {
           key
           value
         }
@@ -199,7 +200,6 @@ export async function getTokenByName(request, { contractName }) {
       name: contract.name,
       token_name: metadata.token_name || null,
       token_symbol: metadata.token_symbol || null,
-      token_decimals: metadata.token_decimals ? parseInt(metadata.token_decimals, 10) : null,
       supply: supply || null,
       created_at: contract.created
     };
