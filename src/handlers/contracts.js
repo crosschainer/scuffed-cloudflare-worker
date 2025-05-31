@@ -92,7 +92,7 @@ export async function getContractCode(request, params, env) {
     // Construct the GraphQL query
     const query = `
       query GetContractCode {
-        contract(name: "${contractName}") {
+        contractByName(name: "${contractName}") {
           name
           code
           created
@@ -106,7 +106,7 @@ export async function getContractCode(request, params, env) {
     });
 
     // Check if the response contains data
-    const contractData = response.data?.data?.contract;
+    const contractData = response.data?.data?.contractByName;
 
     if (!contractData) {
       return new Response(JSON.stringify({
