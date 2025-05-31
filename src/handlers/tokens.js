@@ -12,7 +12,7 @@ export async function getAllTokens(request) {
   const limit = parseInt(url.searchParams.get('limit') || '10', 10);
   
   // Cap the limit to prevent excessive queries
-  const safeLimit = Math.min(limit, 100);
+  const safeLimit = Math.min(limit, 20);
   
   try {
     // First query - get all contracts with pagination
@@ -85,7 +85,7 @@ export async function getAllTokens(request) {
         : c.name;
       
       return {
-        name: c.name,
+        contractName: c.name,
         token_name: m.token_name || null,
         token_symbol: m.token_symbol || null,
         display,
@@ -184,7 +184,7 @@ export async function getTokenByName(request, { contractName }) {
     
     // Format the response
     const tokenData = {
-      name: contract.name,
+      contractName: contract.name,
       token_name: metadata.token_name || null,
       token_symbol: metadata.token_symbol || null,
       display: metadata.token_name

@@ -121,12 +121,12 @@ export const openapiSpec = {
           {
             name: "limit",
             in: "query",
-            description: "Maximum number of items to return (max 100)",
+            description: "Maximum number of items to return (max 20)",
             schema: {
               type: "integer",
               default: 10,
               minimum: 1,
-              maximum: 100
+              maximum: 20
             }
           }
         ],
@@ -143,7 +143,7 @@ export const openapiSpec = {
                       items: {
                         type: "object",
                         properties: {
-                          name: { type: "string", example: "con_usdc" },
+                          contractName: { type: "string", example: "con_usdc" },
                           token_name: { type: "string", example: "USDC" },
                           token_symbol: { type: "string", example: "USDC" },
                           display: { type: "string", example: "USDC (USDC)" },
@@ -194,7 +194,7 @@ export const openapiSpec = {
                 schema: {
                   type: "object",
                   properties: {
-                    name: { type: "string", example: "con_usdc" },
+                    contractName: { type: "string", example: "con_usdc" },
                     token_name: { type: "string", example: "USDC" },
                     token_symbol: { type: "string", example: "USDC" },
                     display: { type: "string", example: "USDC (USDC)" },
