@@ -40,8 +40,7 @@ export async function getAllContracts(request, params, env) {
     // Format the contracts data
     const contracts = contractsData.map(contract => ({
       name: contract.name,
-      created_at: contract.created,
-      submission_date: new Date(contract.created).toISOString()
+      created_at: contract.created
     }));
 
     // Calculate pagination values
@@ -100,9 +99,20 @@ export async function getContractCode(request, params) {
     `;
 
     // Fetch the contract using the GraphQL endpoint
-    const response = await axios.post(GRAPHQL_ENDPOINT, {
-      query: query
-    });
+    console.log(`Sending GraphQL query to ${GRAPHQL_ENDPOINT}: ${query}`);
+    let response;
+    try {
+      response = await axios.post(GRAPHQL_ENDPOINT, {
+        query: query
+      });
+      console.log(`GraphQL response: ${JSON.stringify(response.data)}`);
+    } catch (error) {
+      console.error(`GraphQL error: ${error.message}`);
+      if (error.response) {
+        console.error(`Response data: ${JSON.stringify(error.response.data)}`);
+      }
+      throw error;
+    }
 
     // Check if the response contains data
     const contractData = response.data?.data?.contractByName;
@@ -122,8 +132,7 @@ export async function getContractCode(request, params) {
     return new Response(JSON.stringify({
       name: contractData.name,
       code: contractData.code,
-      created_at: contractData.created,
-      submission_date: new Date(contractData.created).toISOString()
+      created_at: contractData.created
     }), {
       headers: {
         'Content-Type': 'application/json',
