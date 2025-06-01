@@ -94,8 +94,8 @@ async function getXianUsdPrice() {
       return null;
     }
     
-    // For pair 1 (USDC/XIAN), the price is already in USD per XIAN
-    return price;
+    // The price from the pair is XIAN/USDC, so we need to take the inverse for USD/XIAN
+    return 1 / price;
   } catch (error) {
     console.error("Error fetching XIAN/USD price:", error);
     return null;
@@ -124,13 +124,8 @@ async function enhancePairsWithPrices(pairs) {
     };
     
     if (price !== null) {
-      // Special case for pair 1 (USDC/XIAN)
-      if (pair.pair_address === "1") {
-        enhancedPair.priceXian = 1; // 1 XIAN = 1 XIAN
-        enhancedPair.priceUSD = price; // Direct USD price from the pair
-      }
       // If token1 is currency (XIAN), then price is already in XIAN
-      else if (pair.token1 === "currency") {
+      if (pair.token1 === "currency") {
         enhancedPair.priceXian = price;
         
         // If we have the XIAN/USD price, calculate the USD price
