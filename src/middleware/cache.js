@@ -61,7 +61,11 @@ export async function withCache(pathname, request, event, computeResponse) {
 
     if (age < CACHE_TTL_SECONDS + SWR_SECONDS) {
       // stale but acceptable → refresh in bg, return stale
-      event.waitUntil(refresh(cache, cacheKey, computeResponse));
+       event.waitUntil(
+   Promise.resolve().then(() =>
+     refresh(cache, cacheKey, computeResponse)
+   )
+ )
       return cached;
     }
   }
