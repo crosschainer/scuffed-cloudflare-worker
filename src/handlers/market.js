@@ -21,6 +21,128 @@ function extractSymbolFromCode(code) {
 }
 
 /**
+ * Get the latest price for a pair
+ * @param {string} pairAddress - The pair address
+ * @returns {Promise<{price: number|null, timestamp: string|null}>} The price and timestamp
+ */
+async function getLatestPriceForPair(pairAddress) {
+  try {
+    const query = `
+      query { 
+        allEvents(
+          condition: {contract:"con_pairs", event:"Swap"}, 
+          filter: {dataIndexed:{contains:{pair:"${pairAddress}"}}}, 
+          orderBy: CREATED_DESC, 
+          first: 1
+        ) { 
+          edges { 
+            node { 
+              data 
+              created
+            } 
+          } 
+        } 
+      }
+    `;
+
+    const { data } = await axios.post(
+      GRAPHQL_ENDPOINT,
+      { query },
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    const swapData = data?.data?.allEvents?.edges?.[0]?.node;
+    
+    if (!swapData) {
+      return { price: null, timestamp: null };
+    }
+
+    const { amount0In, amount0Out, amount1In, amount1Out } = swapData.data;
+    
+    // Calculate price based on the swap data
+    let price = null;
+    
+    // If token0 was sold for token1
+    if (parseFloat(amount0In) > 0 && parseFloat(amount1Out) > 0) {
+      price = parseFloat(amount1Out) / parseFloat(amount0In);
+    } 
+    // If token1 was sold for token0
+    else if (parseFloat(amount1In) > 0 && parseFloat(amount0Out) > 0) {
+      price = parseFloat(amount1In) / parseFloat(amount0Out);
+    }
+    
+    return { 
+      price, 
+      timestamp: swapData.created 
+    };
+  } catch (error) {
+    console.error(`Error fetching price for pair ${pairAddress}:`, error);
+    return { price: null, timestamp: null };
+  }
+}
+
+/**
+ * Get the latest XIAN/USD price
+ * @returns {Promise<number|null>} The XIAN/USD price or null if not available
+ */
+async function getXianUsdPrice() {
+  try {
+    // Pair 1 is con_usdc/currency (USDC/XIAN)
+    const { price } = await getLatestPriceForPair("1");
+    
+    if (price === null) {
+      return null;
+    }
+    
+    // The price from the pair is XIAN/USDC, so we need to take the inverse for USD/XIAN
+    return 1 / price;
+  } catch (error) {
+    console.error("Error fetching XIAN/USD price:", error);
+    return null;
+  }
+}
+
+/**
+ * Enhance pair data with price information
+ * @param {Array} pairs - The pairs data
+ * @returns {Promise<Array>} The enhanced pairs data with price information
+ */
+async function enhancePairsWithPrices(pairs) {
+  // Get the XIAN/USD price once for all pairs
+  const xianUsdPrice = await getXianUsdPrice();
+  
+  // Process all pairs in parallel for better performance
+  const enhancedPairsPromises = pairs.map(async (pair) => {
+    const { price, timestamp } = await getLatestPriceForPair(pair.pair_address);
+    
+    // Clone the pair object
+    const enhancedPair = { ...pair };
+    
+    if (price !== null) {
+      enhancedPair.priceXian = price;
+      
+      // If we have the XIAN/USD price, calculate the USD price
+      if (xianUsdPrice !== null) {
+        // If token1 is currency (XIAN), then price is already in XIAN
+        if (pair.token1 === "currency") {
+          enhancedPair.priceUSD = price * xianUsdPrice;
+        } 
+        // If token0 is currency (XIAN), then we need to take the inverse
+        else if (pair.token0 === "currency") {
+          enhancedPair.priceUSD = (1 / price) * xianUsdPrice;
+        }
+      }
+      
+      enhancedPair.lastPriceUpdate = timestamp;
+    }
+    
+    return enhancedPair;
+  });
+  
+  return Promise.all(enhancedPairsPromises);
+}
+
+/**
  * Get all trading pairs from the con_pairs contract
  * 
  * @param {Request} request - The request object
@@ -31,6 +153,7 @@ export async function getAllPairs(request) {
     const url = new URL(request.url);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 20);
+    const includePrices = url.searchParams.get('prices') === 'true';
     
     // GraphQL query to fetch PairCreated events with pagination
     const query = `
@@ -75,7 +198,7 @@ export async function getAllPairs(request) {
     }
     
     // Format the pairs data
-    const pairs = edges.map(edge => {
+    let pairs = edges.map(edge => {
       const { node } = edge;
       const pairData = typeof node.data === 'string' ? JSON.parse(node.data) : node.data;
       
@@ -87,6 +210,11 @@ export async function getAllPairs(request) {
         created_at: node.created
       };
     });
+    
+    // Add price information if requested
+    if (includePrices) {
+      pairs = await enhancePairsWithPrices(pairs);
+    }
     
     // Prepare pagination info
     const pagination = {
@@ -118,6 +246,7 @@ export async function getPairsByToken(request, { contractName }) {
   try {
     const url = new URL(request.url);
     const CHUNK_SIZE = 50; // Process in smaller chunks
+    const includePrices = url.searchParams.get('prices') === 'true';
     let allPairs = [];
     let hasMore = true;
     let offset = 0;
@@ -200,6 +329,11 @@ export async function getPairsByToken(request, { contractName }) {
         { error: `No pairs contain token "${contractName}"` },
         { status: 404 }
       );
+    }
+
+    // Add price information if requested
+    if (includePrices) {
+      allPairs = await enhancePairsWithPrices(allPairs);
     }
 
     // Add pagination info for the client
