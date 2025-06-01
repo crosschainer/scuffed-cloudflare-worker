@@ -1,154 +1,101 @@
-import axios from 'axios';
-import { GRAPHQL_ENDPOINT } from '../config/constants.js';
+// src/routes/contracts.js
+import { json } from "../utils/response.js";
+import { executeGraphQLQuery } from "../utils/graphql.js";
 
-/**
- * Get all contracts with pagination
- * @param {Request} request - The incoming request
- * @param {Object} params - URL parameters
- * @param {Object} env - Environment variables
- * @returns {Response} JSON response with contracts data
- */
-export async function getAllContracts(request, params, env) {
+/* ------------------------------------------------------------------ */
+/* 1) GET /contracts?offset=…&limit=…                                  */
+/* ------------------------------------------------------------------ */
+export async function getAllContracts(request /*, _params, _env */) {
   try {
-    // Get query parameters
-    const url = new URL(request.url);
-    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 20);
+    /* 1a. Pagination params (limit hard-capped at 20) */
+    const { searchParams } = new URL(request.url);
+    const offset = Math.max(0, Number.parseInt(searchParams.get("offset") ?? "0", 10));
+    const limit  = Math.min(
+      20,
+      Math.max(1, Number.parseInt(searchParams.get("limit")  ?? "10", 10)),
+    );
 
-    // Construct the GraphQL query
+    /* 1b. GraphQL query */
     const query = `
-      query GetContracts {
-        allContracts(offset: ${offset}, first: ${limit}, orderBy: CREATED_DESC) {
-          nodes {
-            name
-            created
-          }
+      query GetContracts($offset:Int!, $first:Int!) {
+        allContracts(offset: $offset, first: $first, orderBy: CREATED_DESC) {
+          nodes      { name created }
           totalCount
         }
       }
     `;
 
-    // Fetch the contracts using the GraphQL endpoint
-    const response = await axios.post(GRAPHQL_ENDPOINT, {
-      query: query
-    });
+    /* 1c. Call the API */
+    const { data, errors } = await executeGraphQLQuery(query, { offset, first: limit });
+    if (errors?.length) throw new Error(errors[0].message);
 
-    // Check if the response contains data
-    const contractsData = (response.data?.data?.allContracts?.nodes) || [];
-    const totalCount = response.data?.data?.allContracts?.totalCount || 0;
+    const { nodes = [], totalCount = 0 } = data?.allContracts ?? {};
 
-    // Format the contracts data
-    const contracts = contractsData.map(contract => ({
-      name: contract.name,
-      created_at: contract.created
+    /* 1d. Normalise + paginate */
+    const contracts = nodes.map(({ name, created }) => ({
+      name,
+      created_at: created,
     }));
+    const next     = offset + limit < totalCount ? offset + limit : null;
+    const previous = offset > 0 ? Math.max(0, offset - limit)  : null;
 
-    // Calculate pagination values
-    const next = offset + limit < totalCount ? offset + limit : null;
-    const previous = offset > 0 ? Math.max(0, offset - limit) : null;
-
-    // Return the formatted response
-    return new Response(JSON.stringify({
-      contracts,
-      pagination: {
-        offset,
-        limit,
-        total: totalCount,
-        next,
-        previous
-      }
-    }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'max-age=120' // 2-minute cache
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching contracts:", error);
-    return new Response(JSON.stringify({
-      error: "Failed to fetch contracts",
-      message: error.message
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    return json(
+      { contracts, pagination: { offset, limit, total: totalCount, next, previous } },
+      { status: 200, headers: { "Cache-Control": "max-age=120" } },
+    );
+  } catch (err) {
+    console.error("getAllContracts error:", err);
+    return json(
+      { error: "Failed to fetch contracts", message: err.message },
+      { status: 500 },
+    );
   }
 }
 
-/**
- * Get contract code by contract name
- * @param {Request} request - The incoming request
- * @param {Object} params - URL parameters
- * @returns {Response} JSON response with contract code
- */
-export async function getContractCode(request, params) {
+/* ------------------------------------------------------------------ */
+/* 2) GET /contracts/:contractName/code                                */
+/* ------------------------------------------------------------------ */
+export async function getContractCode(_request, { contractName }) {
   try {
-    const { contractName } = params;
+    /* 2a. Basic validation */
+    if (!contractName || contractName.includes(":")) {
+      return json(
+        { error: "Bad request", message: "Invalid or missing contractName." },
+        { status: 400 },
+      );
+    }
 
-    // Construct the GraphQL query
+    /* 2b. GraphQL query (using a variable to stay injection-safe) */
     const query = `
-      query GetContractCode {
-        contractByName(name: "${contractName}") {
-          name
-          code
-          created
+      query GetContractCode($name:String!) {
+        contractByName(name: $name) {
+          name code created
         }
       }
     `;
 
-    // Fetch the contract using the GraphQL endpoint
-    console.log(`Sending GraphQL query to ${GRAPHQL_ENDPOINT}: ${query}`);
-    let response;
-    try {
-      response = await axios.post(GRAPHQL_ENDPOINT, {
-        query: query
-      });
-      console.log(`GraphQL response: ${JSON.stringify(response.data)}`);
-    } catch (error) {
-      console.error(`GraphQL error: ${error.message}`);
-      if (error.response) {
-        console.error(`Response data: ${JSON.stringify(error.response.data)}`);
-      }
-      throw error;
+    const { data, errors } = await executeGraphQLQuery(query, { name: contractName });
+    if (errors?.length) throw new Error(errors[0].message);
+
+    const contract = data?.contractByName;
+    if (!contract) {
+      return json({ error: "Contract not found" }, { status: 404 });
     }
 
-    // Check if the response contains data
-    const contractData = response.data?.data?.contractByName;
-
-    if (!contractData) {
-      return new Response(JSON.stringify({
-        error: "Contract not found"
-      }), {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-
-    // Return the formatted response
-    return new Response(JSON.stringify({
-      name: contractData.name,
-      code: contractData.code,
-      created_at: contractData.created
-    }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'max-age=120' // 2-minute cache
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching contract code:", error);
-    return new Response(JSON.stringify({
-      error: "Failed to fetch contract code",
-      message: error.message
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    /* 2c. Success */
+    return json(
+      {
+        name       : contract.name,
+        code       : contract.code,
+        created_at : contract.created,
+      },
+      { status: 200, headers: { "Cache-Control": "max-age=120" } },
+    );
+  } catch (err) {
+    console.error("getContractCode error:", err);
+    return json(
+      { error: "Failed to fetch contract code", message: err.message },
+      { status: 500 },
+    );
   }
 }
