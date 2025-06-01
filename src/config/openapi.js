@@ -11,7 +11,7 @@ export const openapiSpec = {
   info: {
     title: "General Xian API",
     version: "1.0.0",
-    description: "API endpoints for retrieving data from Xian. If data is missing or you need real-time data, please get it through https://node.xian.org/graphiql instead. All endpoints here have 2-minute edge cache.",
+    description: "API endpoints for retrieving data from Xian. If data is missing or you need real-time data, please get it through https://node.xian.org/graphiql instead. All endpoints here have a couple seconds cache.",
   },
   tags: [
     {

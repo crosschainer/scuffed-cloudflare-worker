@@ -1,103 +1,110 @@
 /**
  * Caching middleware for Cloudflare Workers
  *
- *  ▸ “max-age” (fresh window)         → 120 s by default
- *  ▸ “stale-while-revalidate” (SWR)   → 60 min by default
+ *  ▸ “max-age”  (fresh window)         →  15 s  (configurable)
+ *  ▸ “stale-while-revalidate” (SWR)    →  60 min
  *
  *  Behaviour
  *  ─────────
- *    • If a cached copy is still fresh  → return it instantly.
- *    • If it is stale-but-within SWR    → return the stale copy instantly
- *                                        and refresh the cache *in the background*.
- *    • If it is missing / far too old   → compute a fresh copy and the caller waits once.
+ *    • If cached & fresh               → return immediately.
+ *    • If cached but stale (< SWR)     → return immediately, kick async refresh.
+ *    • If no cache / too stale         → run refresh.
+ *
+ *  Extra:
+ *    • In-flight deduplication: while a refreshPromise is running all
+ *      subsequent callers await the same Promise (no duplicate GraphQL hits).
  */
 
-import { CACHE_TTL_SECONDS } from "../config/constants.js";
 import { json } from "../utils/response.js";
 
-// how long we’re willing to serve stale while a background refresh happens
-const SWR_SECONDS = 3600; // 1 hour
+/* ------------------------------------------------------------------ */
+/*  Config                                                             */
+/* ------------------------------------------------------------------ */
+export const CACHE_TTL_SECONDS = 5;   // how fresh “realtime” should feel
+const SWR_SECONDS              = 3600;
+
+/* ------------------------------------------------------------------ */
+/*  In-flight map  (href → Promise<Response>)                          */
+/*  Lives in the module scope, shared by all requests hitting the same */
+/*  Cloudflare worker instance.                                        */
+/* ------------------------------------------------------------------ */
+const inflight = new Map();
 
 /**
- * A helper that wraps any handler in an edge-cache with SWR.
+ * Edge cache with SWR + in-flight dedup.
  *
- * Steps:
- *   1) Look in caches.default for an entry under the cacheKey (full request URL).
- *      • If fresh (age < CACHE_TTL_SECONDS) → return it immediately.
- *      • If stale but within SWR window     → return it immediately and trigger an async refresh.
- *   2) If no acceptable cached entry, call computeResponse() to get a fresh Response.
- *   3) Attach headers:
- *         Cache-Control: public, max-age=<CACHE_TTL_SECONDS>, stale-while-revalidate=<SWR_SECONDS>
- *         X-Generated-At: <epoch_ms>
- *   4) Put it into caches.default (edge) asynchronously.
- *   5) Return the Response to the client.
- *
- * @param {string}   pathname        – The request pathname (used only for logs, optional)
- * @param {Request}  request         – The original request
- * @param {FetchEvent} event         – The fetch event
- * @param {Function} computeResponse – Function that returns a Promise<Response>
- * @returns {Promise<Response>}      – A cached, stale-while-revalidate, or fresh response
+ * @param {string}   pathname
+ * @param {Request}  request
+ * @param {FetchEvent} event
+ * @param {Function} computeResponse
  */
 export async function withCache(pathname, request, event, computeResponse) {
   const cache    = caches.default;
   const cacheKey = new Request(request.url, request);
 
-  /** ────────────────────────────────────────────────────────────────
-   ** 1) Try to serve from cache
-   ** ───────────────────────────────────────────────────────────── */
+  /* ───── 1) Serve from edge cache if possible ───────────────────── */
   const cached = await cache.match(cacheKey);
   if (cached) {
-    const generatedAt = Number(cached.headers.get("X-Generated-At") || 0);
-    const ageSeconds  = (Date.now() - generatedAt) / 1000;
+    const ts   = Number(cached.headers.get("X-Generated-At") || 0);
+    const age  = (Date.now() - ts) / 1000;
 
-    if (ageSeconds < CACHE_TTL_SECONDS) {
-      // 1a) still within “fresh” window
+    if (age < CACHE_TTL_SECONDS) {
+      // fresh → quick return
       return cached;
     }
 
-    if (ageSeconds < CACHE_TTL_SECONDS + SWR_SECONDS) {
-      // 1b) stale but acceptable – return now, refresh in background
-      event.waitUntil(
-        refreshAndStore(cache, cacheKey, computeResponse) // no await
-      );
+    if (age < CACHE_TTL_SECONDS + SWR_SECONDS) {
+      // stale but acceptable → refresh in bg, return stale
+      event.waitUntil(refresh(cache, cacheKey, computeResponse));
       return cached;
     }
-    // else fall through to full refresh (“too stale”)
   }
 
-  /** ────────────────────────────────────────────────────────────────
-   ** 2) No cache or too stale – compute fresh & store
-   ** ───────────────────────────────────────────────────────────── */
-  return await refreshAndStore(cache, cacheKey, computeResponse);
+  /* ───── 2) No cache or too old – refresh (with dedup) ───────────── */
+  return await refresh(cache, cacheKey, computeResponse);
 }
 
-/**
- * Compute a new response, stamp SWR headers, store in cache, return it.
- * If computeResponse() throws we bubble up 500 JSON.
- */
-async function refreshAndStore(cache, cacheKey, computeResponse) {
-  let fresh;
-  try {
-    fresh = await computeResponse();
-  } catch (err) {
-    return json({ error: err.message || "Internal error" }, { status: 500 });
-  }
+/* ------------------------------------------------------------------ */
+/*  refresh()  – handles dedup & stores to edge cache                  */
+/* ------------------------------------------------------------------ */
+async function refresh(cache, cacheKey, computeResponse) {
+  const key = cacheKey.url;          // string for Map
 
-  // Clone & attach Cache-Control + generation timestamp
-  const headers = new Headers(fresh.headers);
-  headers.set(
-    "Cache-Control",
-    `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`
-  );
-  headers.set("X-Generated-At", Date.now().toString());
+  // If another request already kicked off a refresh, await it
+  if (inflight.has(key)) return inflight.get(key).then(r => r.clone());
 
-  const toCache = new Response(fresh.body, {
-    status: fresh.status,
-    headers,
-  });
+  // Otherwise start a new refresh
+  const promise = (async () => {
+    let fresh;
+    try {
+      fresh = await computeResponse();
+    } catch (err) {
+      // Bubble up error as JSON
+      return json({ error: err.message || "Internal error" }, { status: 500 });
+    }
 
-  // store async – this Worker response is not delayed by put()
-  cache.put(cacheKey, toCache.clone());
+    // Stamp headers
+    const headers = new Headers(fresh.headers);
+    headers.set(
+      "Cache-Control",
+      `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`
+    );
+    headers.set("X-Generated-At", Date.now().toString());
 
-  return toCache;
+    const toCache = new Response(fresh.body, {
+      status: fresh.status,
+      headers,
+    });
+
+    // store in edge cache (fire-and-forget)
+    cache.put(cacheKey, toCache.clone()).catch(() => { /* ignore */ });
+
+    return toCache;
+  })();
+
+  // store promise in map until it settles
+  inflight.set(key, promise);
+  promise.finally(() => inflight.delete(key));
+
+  return promise.then(r => r.clone());
 }
