@@ -103,13 +103,11 @@ export async function getAllPairs(request) {
  */
 export async function getPairByAddress(request, { pairAddress }) {
   try {
-    // GraphQL query to fetch specific pair details
+    // GraphQL query to fetch all pairs and filter client-side
     const query = `
       query {
         allEvents(
           condition: {contract: "con_pairs", event: "PairCreated"}
-          filter: {data: {jsonContains: {"pair": "${pairAddress}"}}}
-          first: 1
         ) {
           edges {
             node {
@@ -135,11 +133,17 @@ export async function getPairByAddress(request, { pairAddress }) {
     
     const { edges } = response.data.data.allEvents;
     
-    if (edges.length === 0) {
+    // Filter the pair by address client-side
+    const pairEdge = edges.find(edge => {
+      const pairData = typeof edge.node.data === 'string' ? JSON.parse(edge.node.data) : edge.node.data;
+      return pairData.pair === pairAddress;
+    });
+    
+    if (!pairEdge) {
       return json({ error: "Pair not found" }, { status: 404 });
     }
     
-    const { node } = edges[0];
+    const { node } = pairEdge;
     const pairData = typeof node.data === 'string' ? JSON.parse(node.data) : node.data;
     
     // Now fetch additional details about the tokens in this pair
