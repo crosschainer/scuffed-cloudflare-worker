@@ -26,10 +26,6 @@ export const openapiSpec = {
       name: "Contracts",
       description: "Endpoints related to smart contracts",
     },
-    {
-      name: "Market",
-      description: "Endpoints related to trading pairs and market data",
-    },
   ],
   paths: {
     "/total-supply": {
