@@ -530,6 +530,15 @@ export const openapiSpec = {
                           priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
                           priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
                           priceChange24h: { type: "number", example: 5.23, nullable: true, description: "24-hour price change percentage" },
+                          volume24h: { 
+                            type: "object", 
+                            properties: {
+                              token0: { type: "number", example: 1000.45, description: "24-hour volume in token0" },
+                              token1: { type: "number", example: 500.23, description: "24-hour volume in token1" },
+                              usd: { type: "number", example: 1500.67, nullable: true, description: "24-hour volume in USD (if available)" }
+                            },
+                            description: "24-hour trading volume"
+                          },
                           lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
                         }
                       }
@@ -605,6 +614,15 @@ export const openapiSpec = {
                           priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
                           priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
                           priceChange24h: { type: "number", example: 5.23, nullable: true, description: "24-hour price change percentage" },
+                          volume24h: { 
+                            type: "object", 
+                            properties: {
+                              token0: { type: "number", example: 1000.45, description: "24-hour volume in token0" },
+                              token1: { type: "number", example: 500.23, description: "24-hour volume in token1" },
+                              usd: { type: "number", example: 1500.67, nullable: true, description: "24-hour volume in USD (if available)" }
+                            },
+                            description: "24-hour trading volume"
+                          },
                           lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
                         },
                       },
