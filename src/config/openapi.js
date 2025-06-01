@@ -562,65 +562,58 @@ export const openapiSpec = {
         }
       }
     },
-    "/pairs/{pairAddress}": {
+    "/pairs/{contractName}": {
       get: {
         tags: ["Market"],
         summary: "Get details for a specific trading pair",
-        description: "Returns detailed information about a specific trading pair by its address",
+        description: "Returns detailed information about trading pairs for specific contract",
         parameters: [
           {
-            name: "pairAddress",
+            name: "contractName",
             in: "path",
             required: true,
-            description: "Address of the trading pair",
+            description: "Contract name of the trading pair",
             schema: {
               type: "string"
             },
-            example: "con_pair_usdc_xian"
+            example: "currency"
           }
         ],
         responses: {
           "200": {
-            description: "Returns pair details with token information",
+            description: "Array of matching pairs",
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    pair_address: { type: "string", example: "con_pair_usdc_xian" },
-                    token0: {
-                      type: "object",
-                      properties: {
-                        contract: { type: "string", example: "con_usdc" },
-                        name: { type: "string", example: "USDC" },
-                        symbol: { type: "string", example: "USDC" },
-                        logo_url: { type: "string", example: "https://example.com/logo.png", nullable: true }
-                      }
+                    count: { type: "integer", example: 2 },
+                    pairs: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          pair_address: { type: "string" },
+                          token0: { type: "string" },
+                          token1: { type: "string" },
+                          block_height: { type: "integer" },
+                          created_at: { type: "string" },
+                        },
+                      },
                     },
-                    token1: {
-                      type: "object",
-                      properties: {
-                        contract: { type: "string", example: "con_xian" },
-                        name: { type: "string", example: "Xian" },
-                        symbol: { type: "string", example: "XIAN" },
-                        logo_url: { type: "string", example: "https://example.com/logo.png", nullable: true }
-                      }
-                    },
-                    block_height: { type: "integer", example: 12345 },
-                    created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
-                  }
-                }
-              }
-            }
+                  },
+                },
+              },
+            },
           },
           "404": {
-            description: "Pair not found",
+            description: "No pairs found",
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    error: { type: "string", example: "Pair not found" }
+                    error: { type: "string", example: "No pairs found" }
                   }
                 }
               }
