@@ -145,6 +145,13 @@ function calculatePriceChangePercentage(currentPrice, previousPrice) {
   return ((currentPrice - previousPrice) / previousPrice) * 100;
 }
 
+function buildPairFilter(pairAddress) {
+  const isNumeric = /^[0-9]+$/.test(pairAddress);
+  return isNumeric
+    ? `dataIndexed: { contains: { pair: ${pairAddress} } }`  // no quotes
+    : `dataIndexed: { contains: { pair: "${pairAddress}" } }`;
+}
+
 /**
  * Compute 24-hour volume for a pair.
  *
@@ -170,7 +177,7 @@ async function get24hVolumeForPair(pairAddress, token0, token1, xianUsdPrice) {
         allEvents(
           condition: { contract: "con_pairs", event: "Swap" }
           filter: {
-            dataIndexed: { contains: { pair: "${pairAddress}" } }
+             ${buildPairFilter(pairAddress)}
             created: { greaterThan: "${since}" }
           }
           first: 1000        # adjust if you expect >1k swaps / 24 h
