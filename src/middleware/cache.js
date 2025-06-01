@@ -1,79 +1,70 @@
 /* ------------------------------------------------------------------ */
-/*  middleware/cache.js  –  Stale-While-Revalidate edge cache         */
+/*  middleware/cache.js  –  serve-stale-while-refresh edge cache      */
 /* ------------------------------------------------------------------ */
 
 import { json } from "../utils/response.js";
 
-const MAX_AGE = 10;          // seconds a response is “fresh”
-const inflight = new Map();  // url → Promise   (deduplicate refreshes)
+const MAX_AGE   = 10;          // how long a value is “fresh” (seconds)
+const inflight  = new Map();   // url → Promise (deduplicate refresh work)
 
-const canon = (u) => { const x=new URL(u); x.searchParams.sort(); return x; };
+const canon = url => { const u = new URL(url); u.searchParams.sort(); return u; };
 
-/**
- * Wrap a handler so:
- *   • first request computes once;
- *   • every later request is instant (stale copy);
- *   • refresh happens **after** the response is sent.
- */
-export async function withEdgeCache(request, event, compute) {
-  const cache    = caches.default;
-  const keyReq   = new Request(canon(request.url));   // GET only
-  const urlKey   = keyReq.url;
+export async function withEdgeCache (request, event, compute) {
+  const cache  = caches.default;
+  const keyReq = new Request(canon(request.url));   // GET only, bodyless key
+  const urlKey = keyReq.url;
 
-  /* ── 1) serve any cached copy immediately ────────────────────── */
+  /* ── 1) try worker-side cache ───────────────────────────────────── */
   const cached = await cache.match(keyReq);
   if (cached) {
-    const age = (Date.now() - Number(cached.headers.get("X-Gen")||0))/1000;
-    if (age > MAX_AGE) {
-      /* older than MAX_AGE – refresh in the background only once   */
-      if (!inflight.has(urlKey)) {
-        inflight.set(urlKey, true);  // flag so we queue just one refresh
-        queueMicrotask(() =>
-          event.waitUntil(refresh(cache, keyReq, compute).finally(
-            () => inflight.delete(urlKey)
-          ))
-        );
-      }
+    const age = (Date.now() - Number(cached.headers.get("X-Gen") || 0)) / 1000;
+
+    // stale? kick background refresh (but only once)
+    if (age > MAX_AGE && !inflight.has(urlKey)) {
+      inflight.set(urlKey, true);
+      queueMicrotask(() =>
+        event.waitUntil(refresh(cache, keyReq, compute)
+          .finally(() => inflight.delete(urlKey)))
+      );
     }
-    /* return the stale (or fresh) copy right now                    */
+
     const h = new Headers(cached.headers);
     h.set("X-Worker-Cache", "HIT");
     return new Response(cached.body, { status: cached.status, headers: h });
   }
 
-  /* ── 2) cache miss – compute, store, return (caller waits once) ─ */
-  const fresh = await computeSafely(compute);
-  await storeIfOk(cache, keyReq, fresh);
-  const h = withCacheHdrs(fresh.headers);
+  /* ── 2) no entry – compute once (caller waits) ─────────────────── */
+  const fresh = await safeCompute(compute);
+  await storeIfGood(cache, keyReq, fresh);
+  const h = stampHeaders(fresh.headers);
   h.set("X-Worker-Cache", "MISS");
   return new Response(fresh.body, { status: fresh.status, headers: h });
 }
 
-/* ------------------------------------------------------------------ */
-/*  helpers                                                           */
-/* ------------------------------------------------------------------ */
+/* ---------- helpers ------------------------------------------------ */
 
-async function computeSafely(fn) {
+async function safeCompute(fn) {
   try { return await fn(); }
-  catch(e){ return json({error:e.message||"Internal"}, {status:500}); }
+  catch (e) { return json({ error: e.message || "Internal error" }, { status: 500 }); }
 }
 
-function withCacheHdrs(srcHeaders) {
-  const h = new Headers(srcHeaders);
-  h.set("Cache-Control", `public, max-age=${MAX_AGE}`);
+function stampHeaders(src) {
+  const h = new Headers(src);
+  /*  IMPORTANT:  “private” stops Cloudflare’s HTTP cache             */
+  h.set("Cache-Control", `private, max-age=0`);
   h.set("X-Gen", Date.now().toString());
   return h;
 }
 
-async function storeIfOk(cache, keyReq, resp) {
-  if (resp.status >= 500) return;
-  const buf = await resp.clone().arrayBuffer();
+async function storeIfGood(cache, keyReq, resp) {
+  if (resp.status >= 500) return;                 // don’t cache errors
+  const buf = await resp.clone().arrayBuffer();   // read once
   const toCache = new Response(buf, { status: resp.status,
-                                      headers: withCacheHdrs(resp.headers) });
+                                      headers: stampHeaders(resp.headers) });
   await cache.put(keyReq, toCache);
 }
 
 async function refresh(cache, keyReq, compute) {
-  const fresh = await computeSafely(compute);
-  await storeIfOk(cache, keyReq, fresh);
+  const fresh = await safeCompute(compute);
+  await storeIfGood(cache, keyReq, fresh);
 }
