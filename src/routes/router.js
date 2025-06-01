@@ -14,7 +14,6 @@ import { totalHoldersHandler }      from "../handlers/totalHolders.js";
 import { getAllTokens, getTokenByName }     from "../handlers/tokens.js";
 import { getTokenHolders }                  from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode } from "../handlers/contracts.js";
-import { getAllPairs }                      from "../handlers/market.js";
 import { getTokenBalance }                  from "../handlers/tokenBalance.js";
 
 /* ── static lookup table (exact paths) ────────────────────────────── */
@@ -26,7 +25,6 @@ const STATIC = {
   "/total-holders":      totalHoldersHandler,
   "/tokens":             getAllTokens,
   "/contracts":          getAllContracts,
-  "/pairs":              getAllPairs,
 };
 
 /* ------------------------------------------------------------------ */
@@ -70,13 +68,6 @@ export async function handleRequest(event) {
   /* ── static routes ------------------------------------------------- */
   const h = STATIC[path];
   if (!h) return json({ error: "Route not found" }, { status: 404 });
-
-  //  /pairs?offset=…&limit=…&inverse=…
-  if (path === "/pairs") {
-    const inverse = url.searchParams.get("inverse") === "true";
-    return withEdgeCache(req, event,
-      () => h(req, event, { inverse }));
-  }
 
   return withEdgeCache(req, event, () => h(req, event));
 }
