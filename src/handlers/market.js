@@ -63,11 +63,11 @@ export async function getAllPairs(request) {
     // Format the pairs data
     const pairs = edges.map(edge => {
       const { node } = edge;
-      const pairData = JSON.parse(node.data);
+      const pairData = typeof node.data === 'string' ? JSON.parse(node.data) : node.data;
       
       return {
-        token0: pairData.token0,
-        token1: pairData.token1,
+        token0: node.dataIndexed.token0,
+        token1: node.dataIndexed.token1,
         pair_address: pairData.pair,
         block_height: node.blockHeight,
         created_at: node.timestamp
@@ -107,7 +107,8 @@ export async function getPairByAddress(request, { pairAddress }) {
     const query = `
       query {
         allEvents(
-          condition: {contract: "con_pairs", event: "PairCreated", data: {contains: "${pairAddress}"}}
+          condition: {contract: "con_pairs", event: "PairCreated"}
+          filter: {data: {contains: "{\\"pair\\":\\"${pairAddress}\\"}"}}
           first: 1
         ) {
           edges {
@@ -139,12 +140,12 @@ export async function getPairByAddress(request, { pairAddress }) {
     }
     
     const { node } = edges[0];
-    const pairData = JSON.parse(node.data);
+    const pairData = typeof node.data === 'string' ? JSON.parse(node.data) : node.data;
     
     // Now fetch additional details about the tokens in this pair
     const token0Query = `
       query {
-        contractByName(name: "${pairData.token0}") {
+        contractByName(name: "${node.dataIndexed.token0}") {
           name
           variables
         }
@@ -153,7 +154,7 @@ export async function getPairByAddress(request, { pairAddress }) {
     
     const token1Query = `
       query {
-        contractByName(name: "${pairData.token1}") {
+        contractByName(name: "${node.dataIndexed.token1}") {
           name
           variables
         }
@@ -173,14 +174,14 @@ export async function getPairByAddress(request, { pairAddress }) {
     const pairDetails = {
       pair_address: pairData.pair,
       token0: {
-        contract: pairData.token0,
-        name: token0Details.token_name || pairData.token0,
+        contract: node.dataIndexed.token0,
+        name: token0Details.token_name || node.dataIndexed.token0,
         symbol: token0Details.token_symbol || "",
         logo_url: token0Details.token_logo_url || null
       },
       token1: {
-        contract: pairData.token1,
-        name: token1Details.token_name || pairData.token1,
+        contract: node.dataIndexed.token1,
+        name: token1Details.token_name || node.dataIndexed.token1,
         symbol: token1Details.token_symbol || "",
         logo_url: token1Details.token_logo_url || null
       },
