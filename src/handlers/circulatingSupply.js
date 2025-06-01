@@ -72,11 +72,13 @@ export async function circulatingSupplyHandler(request, event) {
     }
 
     const circulatingSupply = totalSupply - excludedSum;
-    const burnedSupply = 111111111 - totalSupply; // Assuming 111111111 is the total supply of the token
+    const maximumSupply = 111111111; // Assuming 111111111 is the total supply of the token
+    const burnedSupply = maximumSupply - totalSupply; // Assuming 111111111 is the total supply of the token
     return json({
+      maximumSupply,
+      burnedSupply,
       totalSupply,
       circulatingSupply,
-      burnedSupply,
       excludedSupply: excludedSum,
       excludedAddresses,
 
