@@ -1,78 +1,80 @@
 /* ------------------------------------------------------------------ */
-/* cache.js  – final, robust SWR                                       */
+/* cache.js – final, robust SWR layer                                 */
 /* ------------------------------------------------------------------ */
 import { json } from "../utils/response.js";
 
-export const CACHE_TTL_SECONDS = 5;   // fresh window
-const SWR_SECONDS = 3600;            // serve-stale window
-
-/* -------- canonicalise URL: same key independent of header order --- */
-function canon(url) {
-  const u = new URL(url);
-  u.searchParams.sort();
-  return u.toString();
-}
+export const CACHE_TTL_SECONDS = 5;     // fresh window
+const SWR_SECONDS = 3600;               // serve-stale window
 
 const inflight = new Map();
 
+/* canonicalise URL so param order doesn’t matter, headers ignored */
+function canon(u) {
+  const x = new URL(u);
+  x.searchParams.sort();
+  return x.toString();
+}
+
 /* ------------------------------------------------------------------ */
-/* main helper                                                         */
+/* public helper                                                      */
 /* ------------------------------------------------------------------ */
-export async function withCache(pathname, request, event, computeResponse) {
+export async function withCache(pathname, request, event, compute) {
   const cache    = caches.default;
   const cacheKey = new Request(canon(request.url));   // URL only
 
-  /* 1. try cache --------------------------------------------------- */
+  /* 1 — try cache first ------------------------------------------- */
   const hit = await cache.match(cacheKey);
   if (hit) {
     const age = (Date.now() - Number(hit.headers.get("X-Generated-At") || 0)) / 1000;
     if (age < CACHE_TTL_SECONDS) return hit;                     // fresh
-    if (age < CACHE_TTL_SECONDS + SWR_SECONDS) {                 // stale-ok
-      queueMicrotask(() =>            // really defer refresh
-        event.waitUntil(refresh(cache, cacheKey, computeResponse))
-      );
-      return hit;
+    if (age < CACHE_TTL_SECONDS + SWR_SECONDS) {                 // stale-OK
+      queueMicrotask(() => event.waitUntil(refresh(cache, cacheKey, compute)));
+      return hit;                                                // instant
     }
   }
 
-  /* 2. miss / too old – run or join refresh ----------------------- */
-  return refresh(cache, cacheKey, computeResponse);
+  /* 2 — miss / too old ------------------------------------------- */
+  return refresh(cache, cacheKey, compute);      // deduped inside
 }
 
 /* ------------------------------------------------------------------ */
-/* refresh() with body-buffer/dup & in-flight dedup                    */
+/* refresh() with body-buffer + in-flight dedup                       */
 /* ------------------------------------------------------------------ */
-async function refresh(cache, cacheKey, computeResponse) {
+async function refresh(cache, cacheKey, compute) {
   const key = cacheKey.url;
-
   if (inflight.has(key)) return inflight.get(key);   // join
 
   const p = (async () => {
-    /* run worker handler ------------------------------------------ */
+    /* run the real handler --------------------------------------- */
     let resp;
     try {
-      resp = await computeResponse();
+      resp = await compute();
     } catch (e) {
       return json({ error: e.message || "Internal error" }, { status: 500 });
     }
 
-    /* read body once ---------------------------------------------- */
+    /* buffer body once ------------------------------------------- */
     const buf = await resp.arrayBuffer();
 
-    /* stamp common headers ---------------------------------------- */
-    const common = {
-      "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`,
-      "X-Generated-At": Date.now().toString(),
+    /* copy original headers, add caching ones -------------------- */
+    const makeHeaders = () => {
+      const h = new Headers(resp.headers);              // keep Content-Type !
+      h.set("Cache-Control",
+            `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`);
+      h.set("X-Generated-At", Date.now().toString());
+      return h;
     };
 
-    /* for cache (if success) -------------------------------------- */
+    /* store in edge cache (success statuses only) ---------------- */
     if (resp.status < 500) {
-      const cached = new Response(buf.slice(0), { status: resp.status, headers: common });
-      cache.put(cacheKey, cached).catch(() => {});
+      cache.put(cacheKey, new Response(buf.slice(0), {
+        status: resp.status,
+        headers: makeHeaders(),
+      })).catch(() => {});
     }
 
-    /* for caller --------------------------------------------------- */
-    return new Response(buf, { status: resp.status, headers: common });
+    /* return to caller ------------------------------------------ */
+    return new Response(buf, { status: resp.status, headers: makeHeaders() });
   })();
 
   inflight.set(key, p);
