@@ -218,23 +218,53 @@ async function get24hVolumeForPair(pairAddress, token0, token1, xianUsdPrice) {
     return { volToken0: 0, volToken1: 0, volXian: null, volUSD: null };
   }
 }
+/* ------------------------------------------------------------------ */
+/*  Utility: simple concurrency-limited mapper                         */
+/* ------------------------------------------------------------------ */
+function mapWithLimit(list, limit, asyncFn) {
+  return new Promise((resolve, reject) => {
+    const out = new Array(list.length);
+    let next = 0;
+    let active = 0;
 
+    const launch = () => {
+      if (next >= list.length) {
+        if (active === 0) resolve(out);
+        return;
+      }
+      const idx = next++;
+      active++;
 
-/**
- * Enhance pair data with price information
- * @param {Array} pairs - The pairs data
- * @returns {Promise<Array>} The enhanced pairs data with price information
- */
+      Promise.resolve(asyncFn(list[idx], idx))
+        .then((res) => { out[idx] = res; })
+        .catch(reject)
+        .finally(() => {
+          active--;
+          launch();
+        });
+    };
+
+    // kick off at most <limit> tasks
+    for (let i = 0; i < limit && i < list.length; i++) launch();
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Enhance pair objects with price & 24 h volume                      */
+/* ------------------------------------------------------------------ */
 async function enhancePairsWithPrices(pairs) {
-  // Get the XIAN/USD price once for all pairs
-  const xianUsdPrice = await getXianUsdPrice();
-  
-  // Process all pairs in parallel for better performance
-  const enhancedPairsPromises = pairs.map(async (pair) => {
-    const { price: currentPrice, timestamp } = await getLatestPriceForPair(pair.pair_address);
-    const { price: price24hAgo } = await get24hAgoPriceForPair(pair.pair_address);
-    
-     const {
+  const xianUsdPrice = await getXianUsdPrice();       // once per response
+  const CONCURRENCY  = 5;                             // max parallel GQL calls
+
+  return mapWithLimit(pairs, CONCURRENCY, async (pair) => {
+    /* ───── fetch price data ───── */
+    const { price: currentPrice, timestamp } =
+      await getLatestPriceForPair(pair.pair_address);
+    const { price: price24hAgo } =
+      await get24hAgoPriceForPair(pair.pair_address);
+
+    /* ───── fetch 24 h volume ───── */
+    const {
       volToken0,
       volToken1,
       volXian,
@@ -245,9 +275,9 @@ async function enhancePairsWithPrices(pairs) {
       pair.token1,
       xianUsdPrice
     );
-    
-    // Clone the pair object and initialize price fields with null
-    const enhancedPair = { 
+
+    /* ───── assemble result object ───── */
+    const enhanced = {
       ...pair,
       priceXian: null,
       priceUSD: null,
@@ -256,45 +286,36 @@ async function enhancePairsWithPrices(pairs) {
 
       volume24hToken0: volToken0,
       volume24hToken1: volToken1,
-      volume24hXian: volXian,
-      volume24hUSD: volUSD,
+      volume24hXian:   volXian,
+      volume24hUSD:    volUSD,
     };
-    
+
     if (currentPrice !== null) {
       let priceXian, priceUSD, price24hAgoXian;
-      
-      // If token1 is currency (XIAN), then price is already in XIAN
+
       if (pair.token1 === "currency") {
-        priceXian = currentPrice;
+        priceXian       = currentPrice;
         price24hAgoXian = price24hAgo;
-        
-        // If we have the XIAN/USD price, calculate the USD price
-        if (xianUsdPrice !== null) {
-          priceUSD = currentPrice * xianUsdPrice;
-        }
-      } 
-      // If token0 is currency (XIAN), then we need to take the inverse
-      else if (pair.token0 === "currency") {
-        priceXian = 1 / currentPrice;
+        if (xianUsdPrice !== null) priceUSD = currentPrice * xianUsdPrice;
+      } else if (pair.token0 === "currency") {
+        priceXian       = 1 / currentPrice;
         price24hAgoXian = price24hAgo ? 1 / price24hAgo : null;
-        
-        // If we have the XIAN/USD price, calculate the USD price
-        if (xianUsdPrice !== null) {
-          priceUSD = (1 / currentPrice) * xianUsdPrice;
-        }
+        if (xianUsdPrice !== null) priceUSD = priceXian * xianUsdPrice;
       }
-      
-      enhancedPair.priceXian = priceXian;
-      enhancedPair.priceUSD = priceUSD;
-      enhancedPair.priceChange24h = calculatePriceChangePercentage(priceXian, price24hAgoXian);
-      enhancedPair.lastPriceUpdate = timestamp;
+
+      enhanced.priceXian       = priceXian;
+      enhanced.priceUSD        = priceUSD;
+      enhanced.priceChange24h  = calculatePriceChangePercentage(
+        priceXian,
+        price24hAgoXian
+      );
+      enhanced.lastPriceUpdate = timestamp;
     }
-    
-    return enhancedPair;
+
+    return enhanced;
   });
-  
-  return Promise.all(enhancedPairsPromises);
 }
+
 
 /**
  * Get all trading pairs from the con_pairs contract
