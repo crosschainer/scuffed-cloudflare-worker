@@ -11,6 +11,7 @@ import { swaggerHandler } from '../handlers/swagger.js';
 import { getAllTokens, getTokenByName } from '../handlers/tokens.js';
 import { getTokenHolders } from '../handlers/tokenHolders.js';
 import { getAllContracts, getContractCode } from '../handlers/contracts.js';
+import { getAllPairs, getPairByAddress } from '../handlers/market.js';
 
 /**
  * A mapping of normalized pathname → handler(request, event)
@@ -23,6 +24,7 @@ export const ROUTES = {
   "/total-holders": totalHoldersHandler,
   "/tokens": getAllTokens,
   "/contracts": getAllContracts,
+  "/pairs": getAllPairs,
 };
 
 /**
@@ -73,6 +75,15 @@ export async function handleRequest(event) {
     const contractName = contractMatch[1];
     return await withCache(pathname + url.search, request, event, () =>
       getContractCode(request, { contractName })
+    );
+  }
+  
+  // Pair details route: /pairs/{pairAddress}
+  const pairMatch = pathname.match(/^\/pairs\/([^\/]+)$/);
+  if (pairMatch) {
+    const pairAddress = pairMatch[1];
+    return await withCache(pathname + url.search, request, event, () =>
+      getPairByAddress(request, { pairAddress })
     );
   }
 

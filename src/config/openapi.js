@@ -26,6 +26,10 @@ export const openapiSpec = {
       name: "Contracts",
       description: "Endpoints related to smart contracts",
     },
+    {
+      name: "Market",
+      description: "Endpoints related to trading pairs and market data",
+    },
   ],
   paths: {
     "/total-supply": {
@@ -468,6 +472,168 @@ export const openapiSpec = {
                   type: "object",
                   properties: {
                     error: { type: "string", example: "Failed to fetch contract code" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pairs": {
+      get: {
+        tags: ["Market"],
+        summary: "Get all trading pairs",
+        description: "Returns a paginated list of all trading pairs created through the con_pairs contract",
+        parameters: [
+          {
+            name: "offset",
+            in: "query",
+            description: "Number of items to skip",
+            schema: {
+              type: "integer",
+              default: 0,
+              minimum: 0
+            }
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum number of items to return (max 20)",
+            schema: {
+              type: "integer",
+              default: 10,
+              minimum: 1,
+              maximum: 20
+            }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns a list of trading pairs with pagination information",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    pairs: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          token0: { type: "string", example: "con_usdc" },
+                          token1: { type: "string", example: "con_xian" },
+                          pair_address: { type: "string", example: "con_pair_usdc_xian" },
+                          block_height: { type: "integer", example: 12345 },
+                          created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        offset: { type: "integer", example: 0 },
+                        limit: { type: "integer", example: 10 },
+                        total: { type: "integer", example: 100 },
+                        next: { type: "integer", example: 10, nullable: true },
+                        previous: { type: "integer", example: null, nullable: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch trading pairs" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pairs/{pairAddress}": {
+      get: {
+        tags: ["Market"],
+        summary: "Get details for a specific trading pair",
+        description: "Returns detailed information about a specific trading pair by its address",
+        parameters: [
+          {
+            name: "pairAddress",
+            in: "path",
+            required: true,
+            description: "Address of the trading pair",
+            schema: {
+              type: "string"
+            },
+            example: "con_pair_usdc_xian"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns pair details with token information",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    pair_address: { type: "string", example: "con_pair_usdc_xian" },
+                    token0: {
+                      type: "object",
+                      properties: {
+                        contract: { type: "string", example: "con_usdc" },
+                        name: { type: "string", example: "USDC" },
+                        symbol: { type: "string", example: "USDC" },
+                        logo_url: { type: "string", example: "https://example.com/logo.png", nullable: true }
+                      }
+                    },
+                    token1: {
+                      type: "object",
+                      properties: {
+                        contract: { type: "string", example: "con_xian" },
+                        name: { type: "string", example: "Xian" },
+                        symbol: { type: "string", example: "XIAN" },
+                        logo_url: { type: "string", example: "https://example.com/logo.png", nullable: true }
+                      }
+                    },
+                    block_height: { type: "integer", example: 12345 },
+                    created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            description: "Pair not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Pair not found" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Failed to fetch pair details" },
                     message: { type: "string", example: "Error message details" }
                   }
                 }
