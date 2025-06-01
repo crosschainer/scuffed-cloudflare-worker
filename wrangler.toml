@@ -10,3 +10,10 @@ command = ""
 [env.production]
 name = "xian-api"
 route = { pattern = "xian-api.poc.workers.dev", custom_domain = true }
+
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true
+
+
+

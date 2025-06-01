@@ -30,6 +30,12 @@ const SWR_SECONDS              = 3600;
 /* ------------------------------------------------------------------ */
 const inflight = new Map();
 
+function canonicalURL(reqUrl) {
+  const u = new URL(reqUrl);
+  u.searchParams.sort();          // lexical order: limit, offset
+  return u.toString();
+}
+
 /**
  * Edge cache with SWR + in-flight dedup.
  *
@@ -40,7 +46,7 @@ const inflight = new Map();
  */
 export async function withCache(pathname, request, event, computeResponse) {
   const cache    = caches.default;
-  const cacheKey = new Request(request.url, request);
+  const cacheKey = new Request(canonicalURL(request.url));
 
   /* ───── 1) Serve from edge cache if possible ───────────────────── */
   const cached = await cache.match(cacheKey);
