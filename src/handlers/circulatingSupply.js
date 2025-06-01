@@ -72,11 +72,14 @@ export async function circulatingSupplyHandler(request, event) {
     }
 
     const circulatingSupply = totalSupply - excludedSum;
+    const burnedSupply = 111111111 - totalSupply; // Assuming 111111111 is the total supply of the token
     return json({
       totalSupply,
-      excludedSupply: excludedSum,
       circulatingSupply,
+      burnedSupply,
+      excludedSupply: excludedSum,
       excludedAddresses,
+
     });
   } catch (error) {
     // If error is already a Response (from executeGraphQLQuery), return it
