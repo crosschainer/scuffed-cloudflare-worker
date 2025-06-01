@@ -340,6 +340,78 @@ export const openapiSpec = {
         }
       }
     },
+    "/token/{contractName}/balance/{address}": {
+      get: {
+        tags: ["Tokens"],
+        summary: "Get balance of an address for a given token contract",
+        description:
+          "Returns the balance of `address` in the `contractName.balances` mapping. " +
+          "If the address has no entry, balance will be `0`.",
+        parameters: [
+          {
+            name: "contractName",
+            in: "path",
+            required: true,
+            description: "Token contract name, e.g. `con_usdc`",
+            schema: { type: "string" },
+            example: "con_usdc",
+          },
+          {
+            name: "address",
+            in: "path",
+            required: true,
+            description: "Wallet address (64-char hex) or special key",
+            schema: { type: "string" },
+            example: "79ce1de9c6d4c8c3638f96e4e63e1d6d7f2a9a0d9342bbcfb9c8b0c7e5d4f6a9",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Balance found (or zero if not present)",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    contractName: { type: "string", example: "con_usdc" },
+                    address:      { type: "string", example: "79ce1de9c6…" },
+                    balance:      { type: "number", example: 1234.5678 },
+                  },
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Bad request (missing / malformed path parts)",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error:   { type: "string", example: "Bad request" },
+                    message: { type: "string", example: "contractName and address are required." },
+                  },
+                },
+              },
+            },
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error:   { type: "string", example: "Failed to fetch balance" },
+                    message: { type: "string", example: "Error message details" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/contracts": {
       get: {
         tags: ["Contracts"],
