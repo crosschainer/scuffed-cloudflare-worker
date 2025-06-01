@@ -7,6 +7,20 @@ import { json } from '../utils/response.js';
 import { GRAPHQL_ENDPOINT } from '../config/constants.js';
 
 /**
+ * Helper function to extract symbol from contract code
+ * @param {string} code - The contract code
+ * @returns {string|null} The extracted symbol or null if not found
+ */
+function extractSymbolFromCode(code) {
+  // Try to find symbol in the code
+  const symbolMatch = code.match(/symbol\s*=\s*["']([^"']+)["']/i);
+  if (symbolMatch && symbolMatch[1]) {
+    return symbolMatch[1];
+  }
+  return null;
+}
+
+/**
  * Get all trading pairs from the con_pairs contract
  * 
  * @param {Request} request - The request object
@@ -152,7 +166,7 @@ export async function getPairByAddress(request, { pairAddress }) {
       query {
         contractByName(name: "${node.dataIndexed.token0}") {
           name
-          variables
+          code
         }
       }
     `;
@@ -161,7 +175,7 @@ export async function getPairByAddress(request, { pairAddress }) {
       query {
         contractByName(name: "${node.dataIndexed.token1}") {
           name
-          variables
+          code
         }
       }
     `;
@@ -172,23 +186,39 @@ export async function getPairByAddress(request, { pairAddress }) {
     ]);
     
     // Extract token details
-    const token0Details = token0Response.data?.data?.contractByName?.variables || {};
-    const token1Details = token1Response.data?.data?.contractByName?.variables || {};
+    const token0Contract = token0Response.data?.data?.contractByName || {};
+    const token1Contract = token1Response.data?.data?.contractByName || {};
+    
+    // Extract symbols from code if available
+    const token0Symbol = token0Contract.code ? extractSymbolFromCode(token0Contract.code) : null;
+    const token1Symbol = token1Contract.code ? extractSymbolFromCode(token1Contract.code) : null;
+    
+    const token0Details = {
+      token_name: token0Contract.name || node.dataIndexed.token0,
+      token_symbol: token0Symbol || "",
+      token_logo_url: null
+    };
+    
+    const token1Details = {
+      token_name: token1Contract.name || node.dataIndexed.token1,
+      token_symbol: token1Symbol || "",
+      token_logo_url: null
+    };
     
     // Format the pair details with token information
     const pairDetails = {
       pair_address: pairData.pair,
       token0: {
         contract: node.dataIndexed.token0,
-        name: token0Details.token_name || node.dataIndexed.token0,
-        symbol: token0Details.token_symbol || "",
-        logo_url: token0Details.token_logo_url || null
+        name: token0Details.token_name,
+        symbol: token0Details.token_symbol,
+        logo_url: token0Details.token_logo_url
       },
       token1: {
         contract: node.dataIndexed.token1,
-        name: token1Details.token_name || node.dataIndexed.token1,
-        symbol: token1Details.token_symbol || "",
-        logo_url: token1Details.token_logo_url || null
+        name: token1Details.token_name,
+        symbol: token1Details.token_symbol,
+        logo_url: token1Details.token_logo_url
       },
       block_height: node.id,
       created_at: node.created
