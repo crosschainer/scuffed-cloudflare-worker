@@ -108,7 +108,7 @@ export async function getPairByAddress(request, { pairAddress }) {
       query {
         allEvents(
           condition: {contract: "con_pairs", event: "PairCreated"}
-          filter: {data: {contains: "{\\"pair\\":\\"${pairAddress}\\"}"}}
+          filter: {data: {jsonContains: {"pair": "${pairAddress}"}}}
           first: 1
         ) {
           edges {
