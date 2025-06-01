@@ -65,9 +65,6 @@ export async function withCache(pathname, request, event, computeResponse) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  refresh()  – handles dedup & stores to edge cache                  */
-/* ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ */
 /*  refresh() – single-clone version (no stray ReadableStream branch) */
 /* ------------------------------------------------------------------ */
 async function refresh(cache, cacheKey, computeResponse) {
