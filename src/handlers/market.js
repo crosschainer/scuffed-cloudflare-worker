@@ -124,8 +124,8 @@ export async function getPairsByToken(request, { contractName }) {
           condition: { contract: "con_pairs", event: "PairCreated" }
           filter: {
             or: [
-              { dataIndexed: { token0: { equalTo: "${contractName}" } } }
-              { dataIndexed: { token1: { equalTo: "${contractName}" } } }
+              { dataIndexed: { contains: { token0: "${contractName}" } } }
+              { dataIndexed: { contains: { token1: "${contractName}" } } }
             ]
           }
           orderBy: ID_DESC
