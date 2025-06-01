@@ -1,55 +1,78 @@
-/* cache.js  – simplest possible pattern --------------------------- */
+/* ------------------------------------------------------------------ */
+/*  middleware/cache.js                                               */
+/* ------------------------------------------------------------------ */
+/**
+ * Very small helper that wraps a handler in Cloudflare’s edge cache.
+ * - First caller → handler runs, response cached.
+ * - Subsequent callers (same URL) within CACHE_TTL_SECONDS → instant.
+ * - At expiry the next caller waits once, then the cache is refreshed.
+ *
+ * We copy the body into an ArrayBuffer so two *independent* Response objects
+ * can be created – one for the edge cache and one for the end-user – which
+ * avoids “Body has already been used” errors.
+ */
+
 import { json } from "../utils/response.js";
 
-/** how long results stay fresh at the edge (seconds) */
-export const CACHE_TTL_SECONDS = 10;
+export const CACHE_TTL_SECONDS = 10;      // adjust freshness here
 
-/**
- * Wrap a handler in Cloudflare’s built-in edge cache.
- *
- * @param {Request}   request
- * @param {Function}  computeResponse   – () → Promise<Response>
- * @returns {Promise<Response>}
- */
-export async function withEdgeCache(request, computeResponse) {
-  const cache    = caches.default;
-  const cacheKey = new Request(canonicalUrl(request.url)); // URL only
+/* dedup in-flight refreshes: URL → Promise<Response> */
+const inflight = new Map();
 
-  /* 1. try the cache --------------------------------------------- */
-  const cached = await cache.match(cacheKey);
-  if (cached) return cached;                     // < 10 s old → instant
-
-  /* 2. miss – run the heavy work --------------------------------- */
-  let resp;
-  try {
-    resp = await computeResponse();              // your handler
-  } catch (e) {
-    return json({ error: e.message || "Internal error" }, { status: 500 });
-  }
-
-  /* 3. give CF one copy, caller another (avoid “body used”) ------- */
-  const buf = await resp.arrayBuffer();
-
-  const headers = new Headers(resp.headers);
-  headers.set("Cache-Control", `public, max-age=${CACHE_TTL_SECONDS}`);
-
-  const toCaller = new Response(buf.slice(0), {
-    status: resp.status,
-    headers,
-  });
-
-  /* store async – do **not** wait for it                            */
-  if (resp.status < 500) {
-    const toCache = new Response(buf, { status: resp.status, headers });
-    event.waitUntil(cache.put(cacheKey, toCache));  // fire-&-forget
-  }
-
-  return toCaller;
-}
-
-/* helper – sort query params so ?limit=10&offset=0 == ?offset=0&limit=10 */
-function canonicalUrl(u) {
+/* normalise URL so ?limit=10&offset=0 == ?offset=0&limit=10 */
+function canonical(u) {
   const x = new URL(u);
   x.searchParams.sort();
   return x.toString();
+}
+
+/**
+ * @param {Request}  request         – incoming CF Worker request
+ * @param {FetchEvent} event         – fetch event (to waitUntil cache.put)
+ * @param {Function} computeResponse – async () => Response
+ * @returns {Promise<Response>}      – cached or freshly computed Response
+ */
+export async function withEdgeCache(request, event, computeResponse) {
+  const cache    = caches.default;
+  const cacheKey = new Request(canonical(request.url));   // URL only
+
+  /* 1) try the cache --------------------------------------------- */
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
+  /* 2) miss – run (or join) the expensive computation ------------ */
+  const key = cacheKey.url;
+  if (inflight.has(key)) return inflight.get(key);        // join dedup
+
+  const promise = (async () => {
+    let resp;
+    try {
+      resp = await computeResponse();                     // run handler
+    } catch (e) {
+      return json({ error: e.message || "Internal error" }, { status: 500 });
+    }
+
+    /* buffer body once (small JSON) ------------------------------ */
+    const buf = await resp.arrayBuffer();
+
+    /* copy original headers, just add Cache-Control -------------- */
+    const makeHeaders = () => {
+      const h = new Headers(resp.headers);                // keep Content-Type
+      h.set("Cache-Control", `public, max-age=${CACHE_TTL_SECONDS}`);
+      return h;
+    };
+
+    /* store in edge cache asynchronously (only if not 5xx) ------- */
+    if (resp.status < 500) {
+      const toCache = new Response(buf.slice(0), { status: resp.status, headers: makeHeaders() });
+      event.waitUntil(cache.put(cacheKey, toCache));
+    }
+
+    /* return to caller ------------------------------------------- */
+    return new Response(buf, { status: resp.status, headers: makeHeaders() });
+  })();
+
+  inflight.set(key, promise);
+  promise.finally(() => inflight.delete(key));
+  return promise;
 }
