@@ -15,7 +15,7 @@ import { swaggerHandler }            from "../handlers/swagger.js";
 import { getAllTokens,  getTokenByName }   from "../handlers/tokens.js";
 import { getTokenHolders }                 from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode} from "../handlers/contracts.js";
-import { getAllPairs,   getPairsByToken }  from "../handlers/market.js";
+import { getAllPairs }  from "../handlers/market.js";
 import { getTokenBalance }                 from "../handlers/tokenBalance.js";
 
 /* ─── static-path table (exact matches) ─────────────────────────── */
@@ -85,15 +85,6 @@ export async function handleRequest(event) {
     const contractName = contractMatch[1];
     return withCache(pathname, request, event, () =>
       getContractCode(request, { contractName })
-    );
-  }
-
-  /* 5) /pairs/:contractName  -------------------------------------- */
-  const pairMatch = pathname.match(/^\/pairs\/([^\/]+)$/);
-  if (pairMatch) {
-    const contractName = pairMatch[1];
-    return withCache(pathname + url.search, request, event, () =>
-      getPairsByToken(request, { contractName, inverse })
     );
   }
 
