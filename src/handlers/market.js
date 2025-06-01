@@ -251,20 +251,29 @@ function mapWithLimit(list, limit, asyncFn) {
 
 /* ------------------------------------------------------------------ */
 /*  Enhance pair objects with price & 24 h volume                      */
+/*  @param {Array}  pairs                                              */
+/*  @param {boolean} inverse – if true, return price & volume as       */
+/*                             token1/token0 instead of token0/token1  */
 /* ------------------------------------------------------------------ */
-async function enhancePairsWithPrices(pairs) {
-  const xianUsdPrice = await getXianUsdPrice();       // once per response
-  const CONCURRENCY  = 2;                             // max parallel GQL calls
+async function enhancePairsWithPrices(pairs, inverse = false) {
+  const xianUsdPrice = await getXianUsdPrice();
+  const CONCURRENCY  = 2;
 
   return mapWithLimit(pairs, CONCURRENCY, async (pair) => {
-    /* ───── fetch price data ───── */
-    const { price: currentPrice, timestamp } =
+    /* ───── fetch price data ─────────────────────────────────────── */
+    let { price: currentPrice, timestamp } =
       await getLatestPriceForPair(pair.pair_address);
-    const { price: price24hAgo } =
+    let { price: price24hAgo } =
       await get24hAgoPriceForPair(pair.pair_address);
 
-    /* ───── fetch 24 h volume ───── */
-    const {
+    /* invert if caller requested it */
+    if (inverse) {
+      currentPrice = currentPrice ? 1 / currentPrice : null;
+      price24hAgo  = price24hAgo  ? 1 / price24hAgo  : null;
+    }
+
+    /* ───── fetch 24 h volume ────────────────────────────────────── */
+    let {
       volToken0,
       volToken1,
       volXian,
@@ -276,41 +285,25 @@ async function enhancePairsWithPrices(pairs) {
       xianUsdPrice
     );
 
-    /* ───── assemble result object ───── */
+    /* swap volumes when inverse=true so they match price direction */
+    if (inverse) {
+      [volToken0, volToken1] = [volToken1, volToken0];
+    }
+
+    /* ───── assemble result object ──────────────────────────────── */
     const enhanced = {
       ...pair,
-      priceXian: null,
-      priceUSD: null,
-      priceChange24h: null,
-      lastPriceUpdate: null,
+      price:            currentPrice,
+      price24hAgo,                       // raw, for client if needed
+      priceChange24h:  calculatePriceChangePercentage(
+                         currentPrice, price24hAgo),
+      lastPriceUpdate: timestamp,
 
       volume24hToken0: volToken0,
       volume24hToken1: volToken1,
       volume24hXian:   volXian,
       volume24hUSD:    volUSD,
     };
-
-    if (currentPrice !== null) {
-      let priceXian, priceUSD, price24hAgoXian;
-
-      if (pair.token1 === "currency") {
-        priceXian       = currentPrice;
-        price24hAgoXian = price24hAgo;
-        if (xianUsdPrice !== null) priceUSD = currentPrice * xianUsdPrice;
-      } else if (pair.token0 === "currency") {
-        priceXian       = 1 / currentPrice;
-        price24hAgoXian = price24hAgo ? 1 / price24hAgo : null;
-        if (xianUsdPrice !== null) priceUSD = priceXian * xianUsdPrice;
-      }
-
-      enhanced.priceXian       = priceXian;
-      enhanced.priceUSD        = priceUSD;
-      enhanced.priceChange24h  = calculatePriceChangePercentage(
-        priceXian,
-        price24hAgoXian
-      );
-      enhanced.lastPriceUpdate = timestamp;
-    }
 
     return enhanced;
   });
@@ -327,7 +320,8 @@ export async function getAllPairs(request) {
   try {
     const url = new URL(request.url);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 20);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 10);
+    const inverse = ["true","1"].includes(url.searchParams.get("inverse"));
     
     // GraphQL query to fetch PairCreated events with pagination
     const query = `
@@ -385,7 +379,7 @@ export async function getAllPairs(request) {
     });
     
     // Always add price information
-    pairs = await enhancePairsWithPrices(pairs);
+    pairs = await enhancePairsWithPrices(pairs, inverse);
     
     // Prepare pagination info
     const pagination = {
@@ -420,6 +414,8 @@ export async function getPairsByToken(request, { contractName }) {
     let hasMore = true;
     let offset = 0;
     const MAX_PAIRS = 500; // Set a reasonable upper limit
+    const url     = new URL(request.url);
+    const inverse = ["true","1"].includes(url.searchParams.get("inverse"));
     
     // Process in chunks until we have all pairs or hit a reasonable limit
     while (hasMore && allPairs.length < MAX_PAIRS && offset < 1000) {
@@ -500,7 +496,7 @@ export async function getPairsByToken(request, { contractName }) {
     }
 
     // Always add price information
-    allPairs = await enhancePairsWithPrices(allPairs);
+    allPairs = await enhancePairsWithPrices(allPairs, inverse);
 
     // Add pagination info for the client
     const pagination = {

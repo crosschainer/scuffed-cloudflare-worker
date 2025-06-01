@@ -46,6 +46,9 @@ export async function handleRequest(event) {
   let pathname = url.pathname.replace(/\/+$/, "");
   if (pathname === "") pathname = "/";
 
+  /* --- read inverse flag once ----------------------------------- */
+  const inverse = url.searchParams.get("inverse") === "true";
+
   /* ────────────────── dynamic routes (regex) ───────────────────── */
 
   /* 1) /balance/:contractName/:address  --------------------------- */
@@ -90,7 +93,7 @@ export async function handleRequest(event) {
   if (pairMatch) {
     const contractName = pairMatch[1];
     return withCache(pathname + url.search, request, event, () =>
-      getPairsByToken(request, { contractName })
+      getPairsByToken(request, { contractName, inverse })
     );
   }
 
@@ -98,6 +101,12 @@ export async function handleRequest(event) {
   const handler = ROUTES[pathname];
   if (!handler) {
     return json({ error: "Route not found" }, { status: 404 });
+  }
+
+  if (pathname === "/pairs") {
+    return withCache(pathname + url.search, request, event, () =>
+      handler(request, event, { inverse })   // handler = getAllPairs
+    );
   }
 
   /* ────────────────── run handler (cached) ─────────────────────── */

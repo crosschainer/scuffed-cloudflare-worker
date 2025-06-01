@@ -557,7 +557,7 @@ export const openapiSpec = {
       get: {
         tags: ["Market"],
         summary: "Get all trading pairs",
-        description: "Returns a paginated list of all trading pairs created through the con_pairs contract",
+        description: "Returns a paginated list of all trading pairs created through the con_pairs contract. Set **inverse=true** to invert price & volume so they are quoted as token1 / token0 instead of token0 / token1.",
         parameters: [
           {
             name: "offset",
@@ -572,14 +572,24 @@ export const openapiSpec = {
           {
             name: "limit",
             in: "query",
-            description: "Maximum number of items to return (max 20)",
+            description: "Maximum number of items to return (max 10)",
             schema: {
               type: "integer",
               default: 10,
               minimum: 1,
-              maximum: 20
+              maximum: 10
             }
           },
+          {
+            name: "inverse",
+            in: "query",
+            required: false,
+            description: "If **true**, return price and volume with the tokens swapped (token1 / token0). Default is **false** (token0 / token1).",
+            schema: {
+              type: "boolean",
+              default: false
+            }
+          }
         ],
         responses: {
           "200": {
@@ -645,7 +655,7 @@ export const openapiSpec = {
       get: {
         tags: ["Market"],
         summary: "Get details about trading pairs for specific contract",
-        description: "Returns detailed information about trading pairs for specific contract",
+        description: "Returns detailed information about pairs that include the token `contractName`. Supports **inverse=true** like the /pairs endpoint.",
         parameters: [
           {
             name: "contractName",
@@ -657,6 +667,16 @@ export const openapiSpec = {
             },
             example: "currency"
           },
+          {
+            name: "inverse",
+            in: "query",
+            required: false,
+            description: "If **true**, return price and volume with the tokens swapped (token1 / token0). Default is **false** (token0 / token1).",
+            schema: {
+              type: "boolean",
+              default: false
+            }
+          }
         ],
         responses: {
           "200": {

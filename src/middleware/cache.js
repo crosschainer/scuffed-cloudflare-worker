@@ -63,46 +63,53 @@ export async function withCache(pathname, request, event, computeResponse) {
   /* ───── 2) No cache or too old – refresh (with dedup) ───────────── */
   return await refresh(cache, cacheKey, computeResponse);
 }
-
 /* ------------------------------------------------------------------ */
-/*  refresh() – single-clone version (no stray ReadableStream branch) */
+/*  refresh() – robust, no double-drain, no empty body                */
 /* ------------------------------------------------------------------ */
 async function refresh(cache, cacheKey, computeResponse) {
   const key = cacheKey.url;
 
   if (inflight.has(key)) return inflight.get(key);
 
-  const refreshPromise = (async () => {
+  const promise = (async () => {
     let fresh;
     try {
-      fresh = await computeResponse();
+      fresh = await computeResponse();           // handler’s Response
     } catch (err) {
       return json({ error: err.message || "Internal error" }, { status: 500 });
     }
 
-    // Read body once into memory (small JSON, fine) …
-    const buffer = await fresh.arrayBuffer();
+    /* clone once – we’ll keep the original for the caller  */
+    const cloneForCache = fresh.clone();
 
-    const headers = new Headers(fresh.headers);
-    headers.set(
-      "Cache-Control",
-      `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`
-    );
-    headers.set("X-Generated-At", Date.now().toString());
+    /* stamp shared headers */
+    const hdr = (res) => {
+      const h = new Headers(res.headers);
+      h.set(
+        "Cache-Control",
+        `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`
+      );
+      h.set("X-Generated-At", Date.now().toString());
+      return h;
+    };
 
-    // …create TWO independent Response objects from the same buffer:
-    const forCache   = new Response(buffer.slice(0), { status: fresh.status, headers });
-    const forCaller  = new Response(buffer.slice(0), { status: fresh.status, headers });
+    /* put into cache only on success status (<500) */
+    if (cloneForCache.status < 500) {
+      const cachedResp = new Response(cloneForCache.body, {
+        status: cloneForCache.status,
+        headers: hdr(cloneForCache),
+      });
+      cache.put(cacheKey, cachedResp).catch(() => {});
+    }
 
-    // store asynchronously
-    cache.put(cacheKey, forCache).catch(() => { /* ignore */ });
-
-    return forCaller;
+    /* return a new Response for caller (avoids “body used” issues) */
+    return new Response(fresh.body, {
+      status: fresh.status,
+      headers: hdr(fresh),
+    });
   })();
 
-  inflight.set(key, refreshPromise);
-  refreshPromise.finally(() => inflight.delete(key));
-
-  return refreshPromise;
+  inflight.set(key, promise);
+  promise.finally(() => inflight.delete(key));
+  return promise;
 }
-
