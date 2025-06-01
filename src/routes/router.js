@@ -6,7 +6,7 @@
  */
 
 import { json } from "../utils/response.js";
-import { withEdgeCache } from "../middleware/cache.js";
+import { withSWR } from "../middleware/cache.js";
 
 /* ─── core endpoints ────────────────────────────────────────────── */
 import { totalSupplyHandler }       from "../handlers/totalSupply.js";
@@ -57,7 +57,7 @@ export async function handleRequest(event) {
   const mBalance = pathname.match(/^\/token\/([^\/]+)\/balance\/([^\/]+)$/);
   if (mBalance) {
     const [ , contractName, address ] = mBalance;
-    return withEdgeCache(request, event, () =>
+    return withSWR(request, event, () =>
       getTokenBalance(request, { contractName, address })
     );
   }
@@ -66,7 +66,7 @@ export async function handleRequest(event) {
   const mHolders = pathname.match(/^\/tokens\/([^\/]+)\/holders$/);
   if (mHolders) {
     const contractName = mHolders[1];
-    return withEdgeCache(request, event, () =>
+    return withSWR(request, event, () =>
       getTokenHolders(request, { contractName })
     );
   }
@@ -75,7 +75,7 @@ export async function handleRequest(event) {
   const mToken = pathname.match(/^\/tokens\/([^\/]+)$/);
   if (mToken) {
     const contractName = mToken[1];
-    return withEdgeCache(request, event, () =>
+    return withSWR(request, event, () =>
       getTokenByName(request, { contractName })
     );
   }
@@ -84,7 +84,7 @@ export async function handleRequest(event) {
   const mContract = pathname.match(/^\/contracts\/([^\/]+)$/);
   if (mContract) {
     const contractName = mContract[1];
-    return withEdgeCache(request, event, () =>
+    return withSWR(request, event, () =>
       getContractCode(request, { contractName })
     );
   }
@@ -100,11 +100,11 @@ export async function handleRequest(event) {
   /* Special case: /pairs needs the “inverse” query flag ----------- */
   if (pathname === "/pairs") {
     const inverse = ["true", "1"].includes(url.searchParams.get("inverse"));
-    return withEdgeCache(request, event, () =>
+    return withSWR(request, event, () =>
       handler(request, event, { inverse })          // handler === getAllPairs
     );
   }
 
   /* Default static-route handling -------------------------------- */
-  return withEdgeCache(request, event, () => handler(request, event));
+  return withSWR(request, event, () => handler(request, event));
 }
