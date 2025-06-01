@@ -26,6 +26,12 @@ function canonical(u) {
   return x.toString();
 }
 
+export const CORS_HEADERS = {
+  "Access-Control-Allow-Origin":  "*",                 // or echo request.origin
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type"
+};
+
 /**
  * @param {Request}  request         – incoming CF Worker request
  * @param {FetchEvent} event         – fetch event (to waitUntil cache.put)
@@ -59,6 +65,9 @@ export async function withEdgeCache(request, event, computeResponse) {
     const makeHeaders = () => {
       const h = new Headers(resp.headers);                // keep Content-Type
       h.set("Cache-Control", `public, max-age=${CACHE_TTL_SECONDS}`);
+      for (const [k, v] of Object.entries(CORS_HEADERS)) {
+        if (!h.has(k)) h.set(k, v);                       // add CORS headers
+      }
       return h;
     };
 
