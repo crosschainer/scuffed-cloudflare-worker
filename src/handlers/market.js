@@ -254,7 +254,7 @@ function mapWithLimit(list, limit, asyncFn) {
 /* ------------------------------------------------------------------ */
 async function enhancePairsWithPrices(pairs) {
   const xianUsdPrice = await getXianUsdPrice();       // once per response
-  const CONCURRENCY  = 5;                             // max parallel GQL calls
+  const CONCURRENCY  = 2;                             // max parallel GQL calls
 
   return mapWithLimit(pairs, CONCURRENCY, async (pair) => {
     /* ───── fetch price data ───── */
