@@ -7,20 +7,6 @@ import { json } from '../utils/response.js';
 import { GRAPHQL_ENDPOINT } from '../config/constants.js';
 
 /**
- * Helper function to extract symbol from contract code
- * @param {string} code - The contract code
- * @returns {string|null} The extracted symbol or null if not found
- */
-function extractSymbolFromCode(code) {
-  // Try to find symbol in the code
-  const symbolMatch = code.match(/symbol\s*=\s*["']([^"']+)["']/i);
-  if (symbolMatch && symbolMatch[1]) {
-    return symbolMatch[1];
-  }
-  return null;
-}
-
-/**
  * Get the price for a pair at a specific time
  * @param {string} pairAddress - The pair address
  * @param {Date|null} beforeTime - Get price before this time (null for latest)
@@ -257,7 +243,7 @@ function mapWithLimit(list, limit, asyncFn) {
 /* ------------------------------------------------------------------ */
 async function enhancePairsWithPrices(pairs, inverse = false) {
   const xianUsdPrice = await getXianUsdPrice();
-  const CONCURRENCY  = 2;
+  const CONCURRENCY  = 1;
 
   return mapWithLimit(pairs, CONCURRENCY, async (pair) => {
     /* ───── fetch price data ─────────────────────────────────────── */
