@@ -524,13 +524,16 @@ export const openapiSpec = {
                         properties: {
                           token0: { type: "string", example: "con_usdc" },
                           token1: { type: "string", example: "con_xian" },
-                          pair_address: { type: "string", example: "con_pair_usdc_xian" },
-                          block_height: { type: "integer", example: 12345 },
+                          pair_address: { type: "string", example: "con_pair_usdc_xian" },block_height: { type: "integer", example: 12345 },
                           created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" },
                           priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
                           priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
                           priceChange24h: { type: "number", example: 5.23, nullable: true, description: "24-hour price change percentage" },
-                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
+                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" },
+                          volume24hToken0: { type: "number", example: 1000.5, nullable: true, description: "24-hour trading volume in token0" },
+                          volume24hToken1: { type: "number", example: 500.25, nullable: true, description: "24-hour trading volume in token1" },
+                          volume24hXian: { type: "number", example: 123.45, nullable: true, description: "24-hour trading volume in XIAN" },
+                          volume24hUSD: { type: "number", example: 456.78, nullable: true, description: "24-hour trading volume in USD" }
                         }
                       }
                     },
@@ -600,12 +603,15 @@ export const openapiSpec = {
                           pair_address: { type: "string" },
                           token0: { type: "string" },
                           token1: { type: "string" },
-                          block_height: { type: "integer" },
                           created_at: { type: "string" },
                           priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
                           priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
                           priceChange24h: { type: "number", example: 5.23, nullable: true, description: "24-hour price change percentage" },
-                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
+                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" },
+                          volume24hToken0: { type: "number", example: 1000.5, nullable: true, description: "24-hour trading volume in token0" },
+                          volume24hToken1: { type: "number", example: 500.25, nullable: true, description: "24-hour trading volume in token1" },
+                          volume24hXian: { type: "number", example: 123.45, nullable: true, description: "24-hour trading volume in XIAN" },
+                          volume24hUSD: { type: "number", example: 456.78, nullable: true, description: "24-hour trading volume in USD" }
                         },
                       },
                     },

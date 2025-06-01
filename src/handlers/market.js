@@ -146,6 +146,81 @@ function calculatePriceChangePercentage(currentPrice, previousPrice) {
 }
 
 /**
+ * Compute 24-hour volume for a pair.
+ *
+ *  – If the pair includes XIAN (“currency”), we also return volume in XIAN
+ *    and in USD (using the latest XIAN/USD price).
+ *  – Otherwise volXian / volUSD are null.
+ *
+ * @param {string} pairAddress
+ * @param {string} token0   – pair.token0
+ * @param {string} token1   – pair.token1
+ * @param {number|null} xianUsdPrice – latest XIAN/USD (or null)
+ * @returns {Promise<{volToken0:number, volToken1:number,
+ *                    volXian:number|null, volUSD:number|null}>}
+ */
+async function get24hVolumeForPair(pairAddress, token0, token1, xianUsdPrice) {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toISOString()
+      .replace("Z", ""); // strip the trailing Z so it matches the stored format
+
+    const query = `
+      query {
+        allEvents(
+          condition: { contract: "con_pairs", event: "Swap" }
+          filter: {
+            dataIndexed: { contains: { pair: "${pairAddress}" } }
+            created: { greaterThan: "${since}" }
+          }
+          first: 1000        # adjust if you expect >1k swaps / 24 h
+        ) {
+          edges { node { data } }
+        }
+      }
+    `;
+
+    const { data } = await axios.post(
+      GRAPHQL_ENDPOINT,
+      { query },
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    const edges = data?.data?.allEvents?.edges || [];
+
+    let vol0 = 0;
+    let vol1 = 0;
+
+    for (const { node } of edges) {
+      const d = node.data;
+      vol0 += parseFloat(d.amount0In || 0);
+      vol0 += parseFloat(d.amount0Out || 0);
+      vol1 += parseFloat(d.amount1In || 0);
+      vol1 += parseFloat(d.amount1Out || 0);
+    }
+
+    let volXian = null;
+    let volUSD  = null;
+
+    // If the pair includes “currency” (XIAN) we can compute extra fields
+    if (token0 === "currency") {
+      volXian = vol0;                      // token0 is XIAN
+    } else if (token1 === "currency") {
+      volXian = vol1;                      // token1 is XIAN
+    }
+    if (volXian !== null && xianUsdPrice !== null) {
+      volUSD = volXian * xianUsdPrice;
+    }
+
+    return { volToken0: vol0, volToken1: vol1, volXian, volUSD };
+  } catch (err) {
+    console.error("Volume-24h error for pair", pairAddress, err);
+    return { volToken0: 0, volToken1: 0, volXian: null, volUSD: null };
+  }
+}
+
+
+/**
  * Enhance pair data with price information
  * @param {Array} pairs - The pairs data
  * @returns {Promise<Array>} The enhanced pairs data with price information
@@ -159,6 +234,17 @@ async function enhancePairsWithPrices(pairs) {
     const { price: currentPrice, timestamp } = await getLatestPriceForPair(pair.pair_address);
     const { price: price24hAgo } = await get24hAgoPriceForPair(pair.pair_address);
     
+     const {
+      volToken0,
+      volToken1,
+      volXian,
+      volUSD,
+    } = await get24hVolumeForPair(
+      pair.pair_address,
+      pair.token0,
+      pair.token1,
+      xianUsdPrice
+    );
     
     // Clone the pair object and initialize price fields with null
     const enhancedPair = { 
@@ -166,8 +252,12 @@ async function enhancePairsWithPrices(pairs) {
       priceXian: null,
       priceUSD: null,
       priceChange24h: null,
-      
-      lastPriceUpdate: null
+      lastPriceUpdate: null,
+
+      volume24hToken0: volToken0,
+      volume24hToken1: volToken1,
+      volume24hXian: volXian,
+      volume24hUSD: volUSD,
     };
     
     if (currentPrice !== null) {
@@ -269,7 +359,6 @@ export async function getAllPairs(request) {
         token0: node.dataIndexed.token0,
         token1: node.dataIndexed.token1,
         pair_address: pairData.pair,
-        block_height: node.id,
         created_at: node.created
       };
     });
@@ -369,7 +458,6 @@ export async function getPairsByToken(request, { contractName }) {
           pair_address: payload.pair,
           token0: node.dataIndexed.token0,
           token1: node.dataIndexed.token1,
-          block_height: node.id,
           created_at: node.created
         };
       });
