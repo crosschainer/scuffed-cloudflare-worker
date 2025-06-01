@@ -122,21 +122,15 @@ export async function getPairsByToken(request, { contractName }) {
       query {
         allEvents(
           condition: { contract: "con_pairs", event: "PairCreated" }
-          filter: {
-            or: [
-              { dataIndexed: { contains: { token0: "${contractName}" } } }
-              { dataIndexed: { contains: { token1: "${contractName}" } } }
-            ]
-          }
           orderBy: ID_DESC
-          first: 200
+          first: 1000
         ) {
           edges {
             node {
               id
-              created                       # block time
-              dataIndexed { token0 token1 } # decoded JSON columns
-              data                          # raw JSON string
+              created
+              dataIndexed
+              data
             }
           }
         }
@@ -151,8 +145,14 @@ export async function getPairsByToken(request, { contractName }) {
 
     const edges = data?.data?.allEvents?.edges || [];
 
+    // Filter pairs that include the specified token
+    const filteredEdges = edges.filter(({ node }) => {
+      const { token0, token1 } = node.dataIndexed;
+      return token0 === contractName || token1 === contractName;
+    });
+
     // Format each edge → nice JSON
-    const pairs = edges.map(({ node }) => {
+    const pairs = filteredEdges.map(({ node }) => {
       const payload = typeof node.data === "string"
         ? JSON.parse(node.data)
         : node.data;                          // { pair: "...", token0, token1, … }
