@@ -23,17 +23,17 @@ export async function getAllPairs(request) {
       query {
         allEvents(
           condition: {contract: "con_pairs", event: "PairCreated"}
-          orderBy: BLOCK_HEIGHT_DESC
+          orderBy: ID_DESC
           first: ${limit + 1}
           offset: ${offset}
         ) {
           totalCount
           edges {
             node {
-              blockHeight
+              id
               dataIndexed
               data
-              timestamp
+              created
             }
           }
         }
@@ -69,8 +69,8 @@ export async function getAllPairs(request) {
         token0: node.dataIndexed.token0,
         token1: node.dataIndexed.token1,
         pair_address: pairData.pair,
-        block_height: node.blockHeight,
-        created_at: node.timestamp
+        block_height: node.id,
+        created_at: node.created
       };
     });
     
@@ -113,10 +113,10 @@ export async function getPairByAddress(request, { pairAddress }) {
         ) {
           edges {
             node {
-              blockHeight
+              id
               dataIndexed
               data
-              timestamp
+              created
             }
           }
         }
@@ -185,8 +185,8 @@ export async function getPairByAddress(request, { pairAddress }) {
         symbol: token1Details.token_symbol || "",
         logo_url: token1Details.token_logo_url || null
       },
-      block_height: node.blockHeight,
-      created_at: node.timestamp
+      block_height: node.id,
+      created_at: node.created
     };
     
     return json(pairDetails);
