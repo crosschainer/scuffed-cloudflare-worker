@@ -67,23 +67,25 @@ export async function withCache(pathname, request, event, computeResponse) {
 /* ------------------------------------------------------------------ */
 /*  refresh()  – handles dedup & stores to edge cache                  */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  refresh() – single-clone version (no stray ReadableStream branch) */
+/* ------------------------------------------------------------------ */
 async function refresh(cache, cacheKey, computeResponse) {
-  const key = cacheKey.url;          // string for Map
+  const key = cacheKey.url;
 
-  // If another request already kicked off a refresh, await it
-  if (inflight.has(key)) return inflight.get(key).then(r => r.clone());
+  if (inflight.has(key)) return inflight.get(key);
 
-  // Otherwise start a new refresh
-  const promise = (async () => {
+  const refreshPromise = (async () => {
     let fresh;
     try {
       fresh = await computeResponse();
     } catch (err) {
-      // Bubble up error as JSON
       return json({ error: err.message || "Internal error" }, { status: 500 });
     }
 
-    // Stamp headers
+    // Read body once into memory (small JSON, fine) …
+    const buffer = await fresh.arrayBuffer();
+
     const headers = new Headers(fresh.headers);
     headers.set(
       "Cache-Control",
@@ -91,20 +93,19 @@ async function refresh(cache, cacheKey, computeResponse) {
     );
     headers.set("X-Generated-At", Date.now().toString());
 
-    const toCache = new Response(fresh.body, {
-      status: fresh.status,
-      headers,
-    });
+    // …create TWO independent Response objects from the same buffer:
+    const forCache   = new Response(buffer.slice(0), { status: fresh.status, headers });
+    const forCaller  = new Response(buffer.slice(0), { status: fresh.status, headers });
 
-    // store in edge cache (fire-and-forget)
-    cache.put(cacheKey, toCache.clone()).catch(() => { /* ignore */ });
+    // store asynchronously
+    cache.put(cacheKey, forCache).catch(() => { /* ignore */ });
 
-    return toCache;
+    return forCaller;
   })();
 
-  // store promise in map until it settles
-  inflight.set(key, promise);
-  promise.finally(() => inflight.delete(key));
+  inflight.set(key, refreshPromise);
+  refreshPromise.finally(() => inflight.delete(key));
 
-  return promise.then(r => r.clone());
+  return refreshPromise;
 }
+
