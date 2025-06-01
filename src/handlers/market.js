@@ -108,128 +108,78 @@ export async function getAllPairs(request) {
 }
 
 /**
- * Get details for a specific trading pair
+ * Get all pairs that include a given token / contract name
  * 
- * @param {Request} request - The request object
- * @param {Object} params - Route parameters
- * @param {string} params.pairAddress - The pair address
- * @returns {Promise<Response>} The response with pair details
+ * @param {Request} request
+ * @param {{ contractName: string }} params  – path-param extracted by router
+ * @returns {Promise<Response>}  – JSON array of matching pairs
  */
-export async function getPairByAddress(request, { pairAddress }) {
+export async function getPairsByToken(request, { contractName }) {
   try {
-    // GraphQL query to fetch all pairs and filter client-side
+    // GraphQL: fetch PairCreated where token0 == contract OR token1 == contract
+    // We order newest first; return up to 200 pairs (adjust if you want paging)
     const query = `
-      query {
+      query GetPairsByToken($contract: String!) {
         allEvents(
-          condition: {contract: "con_pairs", event: "PairCreated"}
+          condition: { contract: "con_pairs", event: "PairCreated" }
+          filter: {
+            or: [
+              { dataIndexed: { token0: { equalTo: $contract } } }
+              { dataIndexed: { token1: { equalTo: $contract } } }
+            ]
+          }
+          orderBy: ID_DESC
+          first: 200
         ) {
           edges {
             node {
               id
-              dataIndexed
-              data
-              created
+              created                       # block time
+              dataIndexed { token0 token1 } # decoded JSON columns
+              data                          # raw JSON string
             }
           }
         }
       }
     `;
-    
-    const response = await axios.post(
+
+    const variables = { contract: contractName };
+    const { data } = await axios.post(
       GRAPHQL_ENDPOINT,
-      { query },
-      { headers: { 'Content-Type': 'application/json' } }
+      { query, variables },
+      { headers: { "Content-Type": "application/json" } }
     );
-    
-    if (!response.data || !response.data.data || !response.data.data.allEvents) {
-      return json({ error: "Failed to fetch pair details" }, { status: 500 });
-    }
-    
-    const { edges } = response.data.data.allEvents;
-    
-    // Filter the pair by address client-side
-    const pairEdge = edges.find(edge => {
-      const pairData = typeof edge.node.data === 'string' ? JSON.parse(edge.node.data) : edge.node.data;
-      // Compare as strings to handle potential type mismatches
-      return String(pairData.pair) === String(pairAddress);
+
+    const edges = data?.data?.allEvents?.edges || [];
+
+    // Format each edge → nice JSON
+    const pairs = edges.map(({ node }) => {
+      const payload = typeof node.data === "string"
+        ? JSON.parse(node.data)
+        : node.data;                          // { pair: "...", token0, token1, … }
+
+      return {
+        pair_address: payload.pair,
+        token0: node.dataIndexed.token0,
+        token1: node.dataIndexed.token1,
+        block_height: node.id,
+        created_at: node.created,
+      };
     });
-    
-    if (!pairEdge) {
-      return json({ error: "Pair not found" }, { status: 404 });
+
+    if (pairs.length === 0) {
+      return json(
+        { error: `No pairs contain token “${contractName}”` },
+        { status: 404 }
+      );
     }
-    
-    const { node } = pairEdge;
-    const pairData = typeof node.data === 'string' ? JSON.parse(node.data) : node.data;
-    
-    // Now fetch additional details about the tokens in this pair
-    const token0Query = `
-      query {
-        contractByName(name: "${node.dataIndexed.token0}") {
-          name
-          code
-        }
-      }
-    `;
-    
-    const token1Query = `
-      query {
-        contractByName(name: "${node.dataIndexed.token1}") {
-          name
-          code
-        }
-      }
-    `;
-    
-    const [token0Response, token1Response] = await Promise.all([
-      axios.post(GRAPHQL_ENDPOINT, { query: token0Query }, { headers: { 'Content-Type': 'application/json' } }),
-      axios.post(GRAPHQL_ENDPOINT, { query: token1Query }, { headers: { 'Content-Type': 'application/json' } })
-    ]);
-    
-    // Extract token details
-    const token0Contract = token0Response.data?.data?.contractByName || {};
-    const token1Contract = token1Response.data?.data?.contractByName || {};
-    
-    // Extract symbols from code if available
-    const token0Symbol = token0Contract.code ? extractSymbolFromCode(token0Contract.code) : null;
-    const token1Symbol = token1Contract.code ? extractSymbolFromCode(token1Contract.code) : null;
-    
-    const token0Details = {
-      token_name: token0Contract.name || node.dataIndexed.token0,
-      token_symbol: token0Symbol || "",
-      token_logo_url: null
-    };
-    
-    const token1Details = {
-      token_name: token1Contract.name || node.dataIndexed.token1,
-      token_symbol: token1Symbol || "",
-      token_logo_url: null
-    };
-    
-    // Format the pair details with token information
-    const pairDetails = {
-      pair_address: pairData.pair,
-      token0: {
-        contract: node.dataIndexed.token0,
-        name: token0Details.token_name,
-        symbol: token0Details.token_symbol,
-        logo_url: token0Details.token_logo_url
-      },
-      token1: {
-        contract: node.dataIndexed.token1,
-        name: token1Details.token_name,
-        symbol: token1Details.token_symbol,
-        logo_url: token1Details.token_logo_url
-      },
-      block_height: node.id,
-      created_at: node.created
-    };
-    
-    return json(pairDetails);
-  } catch (error) {
-    console.error("Error fetching pair details:", error);
-    return json({ 
-      error: "Failed to fetch pair details", 
-      message: error.message 
-    }, { status: 500 });
+
+    return json({ pairs, count: pairs.length });
+  } catch (err) {
+    console.error("Error fetching pairs by token:", err);
+    return json(
+      { error: "Failed to fetch pairs", message: err.message },
+      { status: 500 }
+    );
   }
 }
