@@ -94,8 +94,8 @@ async function getXianUsdPrice() {
       return null;
     }
     
-    // The price from the pair is XIAN/USDC, so we need to take the inverse for USD/XIAN
-    return 1 / price;
+    // For pair 1 (USDC/XIAN), the price is already in USD per XIAN
+    return price;
   } catch (error) {
     console.error("Error fetching XIAN/USD price:", error);
     return null;
@@ -115,20 +115,35 @@ async function enhancePairsWithPrices(pairs) {
   const enhancedPairsPromises = pairs.map(async (pair) => {
     const { price, timestamp } = await getLatestPriceForPair(pair.pair_address);
     
-    // Clone the pair object
-    const enhancedPair = { ...pair };
+    // Clone the pair object and initialize price fields with null
+    const enhancedPair = { 
+      ...pair,
+      priceXian: null,
+      priceUSD: null,
+      lastPriceUpdate: null
+    };
     
     if (price !== null) {
-      enhancedPair.priceXian = price;
-      
-      // If we have the XIAN/USD price, calculate the USD price
-      if (xianUsdPrice !== null) {
-        // If token1 is currency (XIAN), then price is already in XIAN
-        if (pair.token1 === "currency") {
+      // Special case for pair 1 (USDC/XIAN)
+      if (pair.pair_address === "1") {
+        enhancedPair.priceXian = 1; // 1 XIAN = 1 XIAN
+        enhancedPair.priceUSD = price; // Direct USD price from the pair
+      }
+      // If token1 is currency (XIAN), then price is already in XIAN
+      else if (pair.token1 === "currency") {
+        enhancedPair.priceXian = price;
+        
+        // If we have the XIAN/USD price, calculate the USD price
+        if (xianUsdPrice !== null) {
           enhancedPair.priceUSD = price * xianUsdPrice;
-        } 
-        // If token0 is currency (XIAN), then we need to take the inverse
-        else if (pair.token0 === "currency") {
+        }
+      } 
+      // If token0 is currency (XIAN), then we need to take the inverse
+      else if (pair.token0 === "currency") {
+        enhancedPair.priceXian = 1 / price;
+        
+        // If we have the XIAN/USD price, calculate the USD price
+        if (xianUsdPrice !== null) {
           enhancedPair.priceUSD = (1 / price) * xianUsdPrice;
         }
       }
@@ -153,7 +168,6 @@ export async function getAllPairs(request) {
     const url = new URL(request.url);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 20);
-    const includePrices = url.searchParams.get('prices') === 'true';
     
     // GraphQL query to fetch PairCreated events with pagination
     const query = `
@@ -211,10 +225,8 @@ export async function getAllPairs(request) {
       };
     });
     
-    // Add price information if requested
-    if (includePrices) {
-      pairs = await enhancePairsWithPrices(pairs);
-    }
+    // Always add price information
+    pairs = await enhancePairsWithPrices(pairs);
     
     // Prepare pagination info
     const pagination = {
@@ -244,9 +256,7 @@ export async function getAllPairs(request) {
  */
 export async function getPairsByToken(request, { contractName }) {
   try {
-    const url = new URL(request.url);
     const CHUNK_SIZE = 50; // Process in smaller chunks
-    const includePrices = url.searchParams.get('prices') === 'true';
     let allPairs = [];
     let hasMore = true;
     let offset = 0;
@@ -311,7 +321,7 @@ export async function getPairsByToken(request, { contractName }) {
           token0: node.dataIndexed.token0,
           token1: node.dataIndexed.token1,
           block_height: node.id,
-          created_at: node.created,
+          created_at: node.created
         };
       });
       
@@ -331,10 +341,8 @@ export async function getPairsByToken(request, { contractName }) {
       );
     }
 
-    // Add price information if requested
-    if (includePrices) {
-      allPairs = await enhancePairsWithPrices(allPairs);
-    }
+    // Always add price information
+    allPairs = await enhancePairsWithPrices(allPairs);
 
     // Add pagination info for the client
     const pagination = {

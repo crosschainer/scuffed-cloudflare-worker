@@ -508,15 +508,6 @@ export const openapiSpec = {
               maximum: 20
             }
           },
-          {
-            name: "prices",
-            in: "query",
-            description: "Include price information for each pair",
-            schema: {
-              type: "boolean",
-              default: false
-            }
-          }
         ],
         responses: {
           "200": {
@@ -536,9 +527,9 @@ export const openapiSpec = {
                           pair_address: { type: "string", example: "con_pair_usdc_xian" },
                           block_height: { type: "integer", example: 12345 },
                           created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" },
-                          priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN (only present when prices=true)" },
-                          priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD (only present when prices=true)" },
-                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update (only present when prices=true)" }
+                          priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
+                          priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
+                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
                         }
                       }
                     },
@@ -590,15 +581,6 @@ export const openapiSpec = {
             },
             example: "currency"
           },
-          {
-            name: "prices",
-            in: "query",
-            description: "Include price information for each pair",
-            schema: {
-              type: "boolean",
-              default: false
-            }
-          }
         ],
         responses: {
           "200": {
@@ -619,9 +601,9 @@ export const openapiSpec = {
                           token1: { type: "string" },
                           block_height: { type: "integer" },
                           created_at: { type: "string" },
-                          priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN (only present when prices=true)" },
-                          priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD (only present when prices=true)" },
-                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update (only present when prices=true)" }
+                          priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
+                          priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
+                          lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
                         },
                       },
                     },
