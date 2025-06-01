@@ -395,7 +395,7 @@ export async function getAllPairs(request) {
  */
 export async function getPairsByToken(request, { contractName }) {
   try {
-    const CHUNK_SIZE = 50; // Process in smaller chunks
+    const CHUNK_SIZE = 10; // Process in smaller chunks
     let allPairs = [];
     let hasMore = true;
     let offset = 0;
