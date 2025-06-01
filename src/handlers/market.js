@@ -116,64 +116,99 @@ export async function getAllPairs(request) {
  */
 export async function getPairsByToken(request, { contractName }) {
   try {
-    // GraphQL: fetch PairCreated where token0 == contract OR token1 == contract
-    // We order newest first; return up to 200 pairs (adjust if you want paging)
-    const query = `
-      query {
-        allEvents(
-          condition: { contract: "con_pairs", event: "PairCreated" }
-          orderBy: ID_DESC
-          first: 1000
-        ) {
-          edges {
-            node {
-              id
-              created
-              dataIndexed
-              data
+    const url = new URL(request.url);
+    const CHUNK_SIZE = 50; // Process in smaller chunks
+    let allPairs = [];
+    let hasMore = true;
+    let offset = 0;
+    const MAX_PAIRS = 500; // Set a reasonable upper limit
+    
+    // Process in chunks until we have all pairs or hit a reasonable limit
+    while (hasMore && allPairs.length < MAX_PAIRS && offset < 1000) {
+      // Build the query with offset-based pagination
+      const query = `
+        query {
+          allEvents(
+            condition: { contract: "con_pairs", event: "PairCreated" }
+            orderBy: ID_DESC
+            first: ${CHUNK_SIZE}
+            offset: ${offset}
+          ) {
+            totalCount
+            edges {
+              node {
+                id
+                created
+                dataIndexed
+                data
+              }
             }
           }
         }
+      `;
+
+      const { data } = await axios.post(
+        GRAPHQL_ENDPOINT,
+        { query },
+        { headers: { "Content-Type": "application/json" } }
+      );
+
+      const edges = data?.data?.allEvents?.edges || [];
+      const totalCount = data?.data?.allEvents?.totalCount || 0;
+      
+      if (edges.length === 0) {
+        hasMore = false;
+        break;
       }
-    `;
+      
+      // Update offset for next iteration
+      offset += CHUNK_SIZE;
+      hasMore = offset < totalCount;
 
-    const { data } = await axios.post(
-      GRAPHQL_ENDPOINT,
-      { query },
-      { headers: { "Content-Type": "application/json" } }
-    );
+      // Filter pairs that include the specified token
+      const filteredEdges = edges.filter(({ node }) => {
+        const { token0, token1 } = node.dataIndexed;
+        return token0 === contractName || token1 === contractName;
+      });
 
-    const edges = data?.data?.allEvents?.edges || [];
+      // Format and add to our collection
+      const pairsChunk = filteredEdges.map(({ node }) => {
+        const payload = typeof node.data === "string"
+          ? JSON.parse(node.data)
+          : node.data;
 
-    // Filter pairs that include the specified token
-    const filteredEdges = edges.filter(({ node }) => {
-      const { token0, token1 } = node.dataIndexed;
-      return token0 === contractName || token1 === contractName;
-    });
+        return {
+          pair_address: payload.pair,
+          token0: node.dataIndexed.token0,
+          token1: node.dataIndexed.token1,
+          block_height: node.id,
+          created_at: node.created,
+        };
+      });
+      
+      allPairs = [...allPairs, ...pairsChunk];
+      
+      // If we've processed a significant number of pairs without finding matches,
+      // and we're not near the beginning, we might want to stop early
+      if (pairsChunk.length === 0 && offset > 200) {
+        break;
+      }
+    }
 
-    // Format each edge → nice JSON
-    const pairs = filteredEdges.map(({ node }) => {
-      const payload = typeof node.data === "string"
-        ? JSON.parse(node.data)
-        : node.data;                          // { pair: "...", token0, token1, … }
-
-      return {
-        pair_address: payload.pair,
-        token0: node.dataIndexed.token0,
-        token1: node.dataIndexed.token1,
-        block_height: node.id,
-        created_at: node.created,
-      };
-    });
-
-    if (pairs.length === 0) {
+    if (allPairs.length === 0) {
       return json(
-        { error: `No pairs contain token “${contractName}”` },
+        { error: `No pairs contain token "${contractName}"` },
         { status: 404 }
       );
     }
 
-    return json({ pairs, count: pairs.length });
+    // Add pagination info for the client
+    const pagination = {
+      total: allPairs.length,
+      note: "All matching pairs are returned in a single response"
+    };
+
+    return json({ pairs: allPairs, count: allPairs.length, pagination });
   } catch (err) {
     console.error("Error fetching pairs by token:", err);
     return json(
