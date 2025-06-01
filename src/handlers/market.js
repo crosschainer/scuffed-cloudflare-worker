@@ -127,66 +127,107 @@ async function get24hVolumeForPair(pairAddress, token0, token1) {
     let volumeToken1 = 0;
     let hasMore = true;
     let offset = 0;
-    const CHUNK_SIZE = 100;
+    // Use a smaller chunk size to avoid timeouts or large response issues
+    const CHUNK_SIZE = 50;
     
     // Get the XIAN/USD price for USD volume calculation
     const xianUsdPrice = await getXianUsdPrice();
     
-    while (hasMore) {
-      const query = `
-        query {
-          allEvents(
-            condition: {contract: "con_pairs", event: "Swap"},
-            filter: {
-              dataIndexed: {contains: {pair: "${pairAddress}"}},
-              created: {greaterThanOrEqualTo: "${formattedYesterday}"}
-            },
-            orderBy: CREATED_DESC,
-            first: ${CHUNK_SIZE},
-            offset: ${offset}
-          ) {
-            totalCount
-            edges {
-              node {
-                data
-                created
+    // Special handling for USDC/XIAN pair which has high volume
+    const isUsdcXianPair = (token0 === "con_usdc" && token1 === "currency") || 
+                          (token0 === "currency" && token1 === "con_usdc");
+    
+    // For high volume pairs, we might need to use an even smaller chunk size
+    const effectiveChunkSize = isUsdcXianPair ? 25 : CHUNK_SIZE;
+    
+    // Limit the number of iterations to prevent infinite loops
+    let iterationCount = 0;
+    const MAX_ITERATIONS = 20; // Adjust as needed
+    
+    while (hasMore && iterationCount < MAX_ITERATIONS) {
+      iterationCount++;
+      
+      try {
+        const query = `
+          query {
+            allEvents(
+              condition: {contract: "con_pairs", event: "Swap"},
+              filter: {
+                dataIndexed: {contains: {pair: "${pairAddress}"}},
+                created: {greaterThanOrEqualTo: "${formattedYesterday}"}
+              },
+              orderBy: CREATED_DESC,
+              first: ${effectiveChunkSize},
+              offset: ${offset}
+            ) {
+              totalCount
+              edges {
+                node {
+                  data
+                  created
+                }
               }
             }
           }
+        `;
+        
+        const { data } = await axios.post(
+          GRAPHQL_ENDPOINT,
+          { query },
+          { headers: { "Content-Type": "application/json" } }
+        );
+        
+        const edges = data?.data?.allEvents?.edges || [];
+        const totalCount = data?.data?.allEvents?.totalCount || 0;
+        
+        if (edges.length === 0) {
+          hasMore = false;
+          break;
         }
-      `;
-      
-      const { data } = await axios.post(
-        GRAPHQL_ENDPOINT,
-        { query },
-        { headers: { "Content-Type": "application/json" } }
-      );
-      
-      const edges = data?.data?.allEvents?.edges || [];
-      
-      if (edges.length === 0) {
-        hasMore = false;
-        break;
-      }
-      
-      // Process this chunk of swap events
-      for (const edge of edges) {
-        const swapData = edge.node.data;
         
-        // Calculate volume from this swap
-        // For token0, we add both in and out amounts
-        volumeToken0 += parseFloat(swapData.amount0In || 0) + parseFloat(swapData.amount0Out || 0);
+        // Process this chunk of swap events
+        for (const edge of edges) {
+          const swapData = edge.node.data;
+          
+          try {
+            // Calculate volume from this swap
+            // For token0, we add both in and out amounts
+            const amount0In = parseFloat(swapData.amount0In || 0);
+            const amount0Out = parseFloat(swapData.amount0Out || 0);
+            
+            // For token1, we add both in and out amounts
+            const amount1In = parseFloat(swapData.amount1In || 0);
+            const amount1Out = parseFloat(swapData.amount1Out || 0);
+            
+            volumeToken0 += amount0In + amount0Out;
+            volumeToken1 += amount1In + amount1Out;
+          } catch (parseError) {
+            console.error(`Error parsing swap data for pair ${pairAddress}:`, parseError);
+            // Continue with the next swap event
+          }
+        }
         
-        // For token1, we add both in and out amounts
-        volumeToken1 += parseFloat(swapData.amount1In || 0) + parseFloat(swapData.amount1Out || 0);
-      }
-      
-      // Update offset for next iteration
-      offset += CHUNK_SIZE;
-      
-      // If we got fewer results than requested, we've reached the end
-      if (edges.length < CHUNK_SIZE) {
-        hasMore = false;
+        // Update offset for next iteration
+        offset += effectiveChunkSize;
+        
+        // If we got fewer results than requested or reached the total count, we've reached the end
+        if (edges.length < effectiveChunkSize || offset >= totalCount) {
+          hasMore = false;
+        }
+        
+        // Add a small delay to avoid rate limiting
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (queryError) {
+        console.error(`Error in volume query iteration ${iterationCount} for pair ${pairAddress}:`, queryError);
+        // If we encounter an error, we'll try to continue with the next chunk
+        offset += effectiveChunkSize;
+        
+        // If we've had too many errors, break the loop
+        if (iterationCount > 5) {
+          hasMore = false;
+        }
       }
     }
     
@@ -200,11 +241,23 @@ async function get24hVolumeForPair(pairAddress, token0, token1) {
       volumeUSD = volumeToken1 * xianUsdPrice;
     }
     
+    // For USDC/XIAN pair, we can directly calculate USD volume
+    if (isUsdcXianPair) {
+      // If token0 is USDC, use token0 volume as USD volume
+      if (token0 === "con_usdc") {
+        volumeUSD = volumeToken0;
+      } 
+      // If token1 is USDC, use token1 volume as USD volume
+      else if (token1 === "con_usdc") {
+        volumeUSD = volumeToken1;
+      }
+    }
+    
     // Divide by 2 to avoid double counting (each swap counts both tokens)
     return {
       volumeToken0: volumeToken0 / 2,
       volumeToken1: volumeToken1 / 2,
-      volumeUSD
+      volumeUSD: volumeUSD ? volumeUSD / 2 : null
     };
   } catch (error) {
     console.error(`Error fetching 24h volume for pair ${pairAddress}:`, error);
