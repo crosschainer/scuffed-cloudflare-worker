@@ -119,13 +119,13 @@ export async function getPairsByToken(request, { contractName }) {
     // GraphQL: fetch PairCreated where token0 == contract OR token1 == contract
     // We order newest first; return up to 200 pairs (adjust if you want paging)
     const query = `
-      query GetPairsByToken($contract: String!) {
+      query {
         allEvents(
           condition: { contract: "con_pairs", event: "PairCreated" }
           filter: {
             or: [
-              { dataIndexed: { token0: { equalTo: $contract } } }
-              { dataIndexed: { token1: { equalTo: $contract } } }
+              { dataIndexed: { token0: { equalTo: "${contractName}" } } }
+              { dataIndexed: { token1: { equalTo: "${contractName}" } } }
             ]
           }
           orderBy: ID_DESC
@@ -143,10 +143,9 @@ export async function getPairsByToken(request, { contractName }) {
       }
     `;
 
-    const variables = { contract: contractName };
     const { data } = await axios.post(
       GRAPHQL_ENDPOINT,
-      { query, variables },
+      { query },
       { headers: { "Content-Type": "application/json" } }
     );
 
