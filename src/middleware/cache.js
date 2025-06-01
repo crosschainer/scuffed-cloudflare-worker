@@ -1,125 +1,81 @@
-/**
- * Caching middleware for Cloudflare Workers
- *
- *  ▸ “max-age”  (fresh window)         →  15 s  (configurable)
- *  ▸ “stale-while-revalidate” (SWR)    →  60 min
- *
- *  Behaviour
- *  ─────────
- *    • If cached & fresh               → return immediately.
- *    • If cached but stale (< SWR)     → return immediately, kick async refresh.
- *    • If no cache / too stale         → run refresh.
- *
- *  Extra:
- *    • In-flight deduplication: while a refreshPromise is running all
- *      subsequent callers await the same Promise (no duplicate GraphQL hits).
- */
-
+/* ------------------------------------------------------------------ */
+/* cache.js  – final, robust SWR                                       */
+/* ------------------------------------------------------------------ */
 import { json } from "../utils/response.js";
 
-/* ------------------------------------------------------------------ */
-/*  Config                                                             */
-/* ------------------------------------------------------------------ */
-export const CACHE_TTL_SECONDS = 5;   // how fresh “realtime” should feel
-const SWR_SECONDS              = 3600;
+export const CACHE_TTL_SECONDS = 5;   // fresh window
+const SWR_SECONDS = 3600;            // serve-stale window
 
-/* ------------------------------------------------------------------ */
-/*  In-flight map  (href → Promise<Response>)                          */
-/*  Lives in the module scope, shared by all requests hitting the same */
-/*  Cloudflare worker instance.                                        */
-/* ------------------------------------------------------------------ */
-const inflight = new Map();
-
-function canonicalURL(reqUrl) {
-  const u = new URL(reqUrl);
-  u.searchParams.sort();          // lexical order: limit, offset
+/* -------- canonicalise URL: same key independent of header order --- */
+function canon(url) {
+  const u = new URL(url);
+  u.searchParams.sort();
   return u.toString();
 }
 
-/**
- * Edge cache with SWR + in-flight dedup.
- *
- * @param {string}   pathname
- * @param {Request}  request
- * @param {FetchEvent} event
- * @param {Function} computeResponse
- */
+const inflight = new Map();
+
+/* ------------------------------------------------------------------ */
+/* main helper                                                         */
+/* ------------------------------------------------------------------ */
 export async function withCache(pathname, request, event, computeResponse) {
   const cache    = caches.default;
-  const cacheKey = new Request(canonicalURL(request.url));
+  const cacheKey = new Request(canon(request.url));   // URL only
 
-  /* ───── 1) Serve from edge cache if possible ───────────────────── */
-  const cached = await cache.match(cacheKey);
-  if (cached) {
-    const ts   = Number(cached.headers.get("X-Generated-At") || 0);
-    const age  = (Date.now() - ts) / 1000;
-
-    if (age < CACHE_TTL_SECONDS) {
-      // fresh → quick return
-      return cached;
-    }
-
-    if (age < CACHE_TTL_SECONDS + SWR_SECONDS) {
-      // stale but acceptable → refresh in bg, return stale
-       event.waitUntil(
-   Promise.resolve().then(() =>
-     refresh(cache, cacheKey, computeResponse)
-   )
- )
-      return cached;
+  /* 1. try cache --------------------------------------------------- */
+  const hit = await cache.match(cacheKey);
+  if (hit) {
+    const age = (Date.now() - Number(hit.headers.get("X-Generated-At") || 0)) / 1000;
+    if (age < CACHE_TTL_SECONDS) return hit;                     // fresh
+    if (age < CACHE_TTL_SECONDS + SWR_SECONDS) {                 // stale-ok
+      queueMicrotask(() =>            // really defer refresh
+        event.waitUntil(refresh(cache, cacheKey, computeResponse))
+      );
+      return hit;
     }
   }
 
-  /* ───── 2) No cache or too old – refresh (with dedup) ───────────── */
-  return await refresh(cache, cacheKey, computeResponse);
+  /* 2. miss / too old – run or join refresh ----------------------- */
+  return refresh(cache, cacheKey, computeResponse);
 }
+
 /* ------------------------------------------------------------------ */
-/*  refresh() – robust, no double-drain, no empty body                */
+/* refresh() with body-buffer/dup & in-flight dedup                    */
 /* ------------------------------------------------------------------ */
 async function refresh(cache, cacheKey, computeResponse) {
   const key = cacheKey.url;
 
-  if (inflight.has(key)) return inflight.get(key);
+  if (inflight.has(key)) return inflight.get(key);   // join
 
-  const promise = (async () => {
-    let fresh;
+  const p = (async () => {
+    /* run worker handler ------------------------------------------ */
+    let resp;
     try {
-      fresh = await computeResponse();           // handler’s Response
-    } catch (err) {
-      return json({ error: err.message || "Internal error" }, { status: 500 });
+      resp = await computeResponse();
+    } catch (e) {
+      return json({ error: e.message || "Internal error" }, { status: 500 });
     }
 
-    /* clone once – we’ll keep the original for the caller  */
-    const cloneForCache = fresh.clone();
+    /* read body once ---------------------------------------------- */
+    const buf = await resp.arrayBuffer();
 
-    /* stamp shared headers */
-    const hdr = (res) => {
-      const h = new Headers(res.headers);
-      h.set(
-        "Cache-Control",
-        `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`
-      );
-      h.set("X-Generated-At", Date.now().toString());
-      return h;
+    /* stamp common headers ---------------------------------------- */
+    const common = {
+      "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}, stale-while-revalidate=${SWR_SECONDS}`,
+      "X-Generated-At": Date.now().toString(),
     };
 
-    /* put into cache only on success status (<500) */
-    if (cloneForCache.status < 500) {
-      const cachedResp = new Response(cloneForCache.body, {
-        status: cloneForCache.status,
-        headers: hdr(cloneForCache),
-      });
-      cache.put(cacheKey, cachedResp).catch(() => {});
+    /* for cache (if success) -------------------------------------- */
+    if (resp.status < 500) {
+      const cached = new Response(buf.slice(0), { status: resp.status, headers: common });
+      cache.put(cacheKey, cached).catch(() => {});
     }
 
-    /* return a new Response for caller (avoids “body used” issues) */
-    return new Response(fresh.body, {
-      status: fresh.status,
-      headers: hdr(fresh),
-    });
+    /* for caller --------------------------------------------------- */
+    return new Response(buf, { status: resp.status, headers: common });
   })();
 
-  inflight.set(key, promise);
-  promise.finally(() => inflight.delete(key));
-  return promise;
+  inflight.set(key, p);
+  p.finally(() => inflight.delete(key));
+  return p;
 }
