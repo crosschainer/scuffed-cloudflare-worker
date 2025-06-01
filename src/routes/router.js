@@ -11,7 +11,7 @@ import { swaggerHandler } from '../handlers/swagger.js';
 import { getAllTokens, getTokenByName } from '../handlers/tokens.js';
 import { getTokenHolders } from '../handlers/tokenHolders.js';
 import { getAllContracts, getContractCode } from '../handlers/contracts.js';
-import { getAllPairs, getPairByAddress } from '../handlers/market.js';
+import { getAllPairs, getPairsByToken } from '../handlers/market.js';
 
 /**
  * A mapping of normalized pathname → handler(request, event)
@@ -78,12 +78,12 @@ export async function handleRequest(event) {
     );
   }
   
-  // Pair details route: /pairs/{pairAddress}
+  // Pair details route: /pairs/{contractName}
   const pairMatch = pathname.match(/^\/pairs\/([^\/]+)$/);
   if (pairMatch) {
     const pairAddress = pairMatch[1];
     return await withCache(pathname + url.search, request, event, () =>
-      getPairByAddress(request, { pairAddress })
+      getPairsByToken(request, { pairAddress })
     );
   }
 
