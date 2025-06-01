@@ -529,6 +529,7 @@ export const openapiSpec = {
                           created_at: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z" },
                           priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
                           priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
+                          priceChange24h: { type: "number", example: 5.23, nullable: true, description: "24-hour price change percentage" },
                           lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
                         }
                       }
@@ -603,6 +604,7 @@ export const openapiSpec = {
                           created_at: { type: "string" },
                           priceXian: { type: "number", example: 0.0123, nullable: true, description: "Price in XIAN" },
                           priceUSD: { type: "number", example: 0.0045, nullable: true, description: "Price in USD" },
+                          priceChange24h: { type: "number", example: 5.23, nullable: true, description: "24-hour price change percentage" },
                           lastPriceUpdate: { type: "string", format: "date-time", example: "2023-01-01T00:00:00Z", nullable: true, description: "Timestamp of the last price update" }
                         },
                       },

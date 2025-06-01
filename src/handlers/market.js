@@ -21,17 +21,26 @@ function extractSymbolFromCode(code) {
 }
 
 /**
- * Get the latest price for a pair
+ * Get the price for a pair at a specific time
  * @param {string} pairAddress - The pair address
+ * @param {Date|null} beforeTime - Get price before this time (null for latest)
  * @returns {Promise<{price: number|null, timestamp: string|null}>} The price and timestamp
  */
-async function getLatestPriceForPair(pairAddress) {
+async function getPriceForPair(pairAddress, beforeTime = null) {
   try {
+    let filterClause = `dataIndexed:{contains:{pair:"${pairAddress}"}}`;
+    
+    // Add time filter if provided
+    if (beforeTime) {
+      const formattedTime = beforeTime.toISOString().replace("Z", ""); // remove trailing 'Z'
+      filterClause += `, created:{lessThan:"${formattedTime}"}`;
+    }
+    
     const query = `
       query { 
         allEvents(
           condition: {contract:"con_pairs", event:"Swap"}, 
-          filter: {dataIndexed:{contains:{pair:"${pairAddress}"}}}, 
+          filter: {${filterClause}}, 
           orderBy: CREATED_DESC, 
           first: 1
         ) { 
@@ -82,6 +91,26 @@ async function getLatestPriceForPair(pairAddress) {
 }
 
 /**
+ * Get the latest price for a pair
+ * @param {string} pairAddress - The pair address
+ * @returns {Promise<{price: number|null, timestamp: string|null}>} The price and timestamp
+ */
+async function getLatestPriceForPair(pairAddress) {
+  return getPriceForPair(pairAddress);
+}
+
+/**
+ * Get the price for a pair 24 hours ago
+ * @param {string} pairAddress - The pair address
+ * @returns {Promise<{price: number|null, timestamp: string|null}>} The price and timestamp
+ */
+async function get24hAgoPriceForPair(pairAddress) {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  return getPriceForPair(pairAddress, yesterday);
+}
+
+/**
  * Get the latest XIAN/USD price
  * @returns {Promise<number|null>} The XIAN/USD price or null if not available
  */
@@ -103,6 +132,20 @@ async function getXianUsdPrice() {
 }
 
 /**
+ * Calculate price change percentage
+ * @param {number|null} currentPrice - Current price
+ * @param {number|null} previousPrice - Previous price
+ * @returns {number|null} - Price change percentage or null if either price is null
+ */
+function calculatePriceChangePercentage(currentPrice, previousPrice) {
+  if (currentPrice === null || previousPrice === null || previousPrice === 0) {
+    return null;
+  }
+  
+  return ((currentPrice - previousPrice) / previousPrice) * 100;
+}
+
+/**
  * Enhance pair data with price information
  * @param {Array} pairs - The pairs data
  * @returns {Promise<Array>} The enhanced pairs data with price information
@@ -113,36 +156,45 @@ async function enhancePairsWithPrices(pairs) {
   
   // Process all pairs in parallel for better performance
   const enhancedPairsPromises = pairs.map(async (pair) => {
-    const { price, timestamp } = await getLatestPriceForPair(pair.pair_address);
+    const { price: currentPrice, timestamp } = await getLatestPriceForPair(pair.pair_address);
+    const { price: price24hAgo } = await get24hAgoPriceForPair(pair.pair_address);
     
     // Clone the pair object and initialize price fields with null
     const enhancedPair = { 
       ...pair,
       priceXian: null,
       priceUSD: null,
+      priceChange24h: null,
       lastPriceUpdate: null
     };
     
-    if (price !== null) {
+    if (currentPrice !== null) {
+      let priceXian, priceUSD, price24hAgoXian;
+      
       // If token1 is currency (XIAN), then price is already in XIAN
       if (pair.token1 === "currency") {
-        enhancedPair.priceXian = price;
+        priceXian = currentPrice;
+        price24hAgoXian = price24hAgo;
         
         // If we have the XIAN/USD price, calculate the USD price
         if (xianUsdPrice !== null) {
-          enhancedPair.priceUSD = price * xianUsdPrice;
+          priceUSD = currentPrice * xianUsdPrice;
         }
       } 
       // If token0 is currency (XIAN), then we need to take the inverse
       else if (pair.token0 === "currency") {
-        enhancedPair.priceXian = 1 / price;
+        priceXian = 1 / currentPrice;
+        price24hAgoXian = price24hAgo ? 1 / price24hAgo : null;
         
         // If we have the XIAN/USD price, calculate the USD price
         if (xianUsdPrice !== null) {
-          enhancedPair.priceUSD = (1 / price) * xianUsdPrice;
+          priceUSD = (1 / currentPrice) * xianUsdPrice;
         }
       }
       
+      enhancedPair.priceXian = priceXian;
+      enhancedPair.priceUSD = priceUSD;
+      enhancedPair.priceChange24h = calculatePriceChangePercentage(priceXian, price24hAgoXian);
       enhancedPair.lastPriceUpdate = timestamp;
     }
     
