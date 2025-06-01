@@ -134,11 +134,10 @@ export async function getPairByAddress(request, { pairAddress }) {
     const { edges } = response.data.data.allEvents;
     
     // Filter the pair by address client-side
-    console.log(`Looking for pair address: ${pairAddress}`);
     const pairEdge = edges.find(edge => {
       const pairData = typeof edge.node.data === 'string' ? JSON.parse(edge.node.data) : edge.node.data;
-      console.log(`Comparing with: ${JSON.stringify(pairData)}`);
-      return pairData.pair === pairAddress;
+      // Compare as strings to handle potential type mismatches
+      return String(pairData.pair) === String(pairAddress);
     });
     
     if (!pairEdge) {
