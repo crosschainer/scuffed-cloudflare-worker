@@ -6,7 +6,6 @@
  */
 
 import { handleRequest } from './routes/router.js';
-import "./utils/retry.js"; // Patch axios for retry logic
 
 // Register the fetch event listener
 addEventListener("fetch", (event) => {
