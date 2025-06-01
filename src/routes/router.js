@@ -81,9 +81,9 @@ export async function handleRequest(event) {
   // Pair details route: /pairs/{contractName}
   const pairMatch = pathname.match(/^\/pairs\/([^\/]+)$/);
   if (pairMatch) {
-    const pairAddress = pairMatch[1];
+    const contractName = pairMatch[1];
     return await withCache(pathname + url.search, request, event, () =>
-      getPairsByToken(request, { pairAddress })
+      getPairsByToken(request, { contractName })
     );
   }
 
