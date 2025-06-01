@@ -568,14 +568,14 @@ export const openapiSpec = {
     "/pairs/{contractName}": {
       get: {
         tags: ["Market"],
-        summary: "Get details for a specific trading pair",
+        summary: "Get details about trading pairs for specific contract",
         description: "Returns detailed information about trading pairs for specific contract",
         parameters: [
           {
             name: "contractName",
             in: "path",
             required: true,
-            description: "Contract name of the trading pair",
+            description: "Contract name of the involved token",
             schema: {
               type: "string"
             },
