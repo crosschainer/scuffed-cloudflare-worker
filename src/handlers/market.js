@@ -111,163 +111,6 @@ async function get24hAgoPriceForPair(pairAddress) {
 }
 
 /**
- * Get 24-hour trading volume for a pair
- * @param {string} pairAddress - The pair address
- * @param {string} token0 - The first token in the pair
- * @param {string} token1 - The second token in the pair
- * @returns {Promise<{volumeToken0: number, volumeToken1: number, volumeUSD: number|null}>} The trading volumes
- */
-async function get24hVolumeForPair(pairAddress, token0, token1) {
-  try {
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const formattedYesterday = yesterday.toISOString().replace("Z", "");
-    
-    // For USDC/XIAN pair, we'll use a hardcoded value for now
-    // This is a temporary solution until we can optimize the query
-    const isUsdcXianPair = (token0 === "con_usdc" && token1 === "currency") || 
-                          (token0 === "currency" && token1 === "con_usdc");
-    
-    if (isUsdcXianPair) {
-      if (token0 === "con_usdc") {
-        return {
-          volumeToken0: 39500, // USDC volume
-          volumeToken1: 3000000, // XIAN volume
-          volumeUSD: 79000 // USD volume
-        };
-      } else {
-        return {
-          volumeToken0: 3000000, // XIAN volume
-          volumeToken1: 39500, // USDC volume
-          volumeUSD: 79000 // USD volume
-        };
-      }
-    }
-    
-    let volumeToken0 = 0;
-    let volumeToken1 = 0;
-    let hasMore = true;
-    let offset = 0;
-    // Use a smaller chunk size to avoid timeouts or large response issues
-    const CHUNK_SIZE = 50;
-    
-    // Get the XIAN/USD price for USD volume calculation
-    const xianUsdPrice = await getXianUsdPrice();
-    
-    // Limit the number of iterations to prevent infinite loops
-    let iterationCount = 0;
-    const MAX_ITERATIONS = 20; // Adjust as needed
-    
-    while (hasMore && iterationCount < MAX_ITERATIONS) {
-      iterationCount++;
-      
-      try {
-        const query = `
-          query {
-            allEvents(
-              condition: {contract: "con_pairs", event: "Swap"},
-              filter: {
-                dataIndexed: {contains: {pair: "${pairAddress}"}},
-                created: {greaterThanOrEqualTo: "${formattedYesterday}"}
-              },
-              orderBy: CREATED_DESC,
-              first: ${CHUNK_SIZE},
-              offset: ${offset}
-            ) {
-              totalCount
-              edges {
-                node {
-                  data
-                  created
-                }
-              }
-            }
-          }
-        `;
-        
-        const { data } = await axios.post(
-          GRAPHQL_ENDPOINT,
-          { query },
-          { headers: { "Content-Type": "application/json" } }
-        );
-        
-        const edges = data?.data?.allEvents?.edges || [];
-        const totalCount = data?.data?.allEvents?.totalCount || 0;
-        
-        if (edges.length === 0) {
-          hasMore = false;
-          break;
-        }
-        
-        // Process this chunk of swap events
-        for (const edge of edges) {
-          const swapData = edge.node.data;
-          
-          try {
-            // For volume calculation, we only count tokens that were sold (tokens going in)
-            // This avoids double counting and gives a more accurate representation of trading volume
-            const amount0In = parseFloat(swapData.amount0In || 0);
-            const amount1In = parseFloat(swapData.amount1In || 0);
-            
-            // Add to the volume counters
-            volumeToken0 += amount0In;
-            volumeToken1 += amount1In;
-          } catch (parseError) {
-            console.error(`Error parsing swap data for pair ${pairAddress}:`, parseError);
-            // Continue with the next swap event
-          }
-        }
-        
-        // Update offset for next iteration
-        offset += CHUNK_SIZE;
-        
-        // If we got fewer results than requested or reached the total count, we've reached the end
-        if (edges.length < CHUNK_SIZE || offset >= totalCount) {
-          hasMore = false;
-        }
-        
-        // Add a small delay to avoid rate limiting
-        if (hasMore) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      } catch (queryError) {
-        console.error(`Error in volume query iteration ${iterationCount} for pair ${pairAddress}:`, queryError);
-        // If we encounter an error, we'll try to continue with the next chunk
-        offset += CHUNK_SIZE;
-        
-        // If we've had too many errors, break the loop
-        if (iterationCount > 5) {
-          hasMore = false;
-        }
-      }
-    }
-    
-    // Calculate USD volume
-    let volumeUSD = null;
-    
-    // If one of the tokens is XIAN (currency), we can calculate USD volume
-    if (token0 === "currency" && xianUsdPrice !== null) {
-      volumeUSD = volumeToken0 * xianUsdPrice;
-    } else if (token1 === "currency" && xianUsdPrice !== null) {
-      volumeUSD = volumeToken1 * xianUsdPrice;
-    }
-    
-    return {
-      volumeToken0,
-      volumeToken1,
-      volumeUSD
-    };
-  } catch (error) {
-    console.error(`Error fetching 24h volume for pair ${pairAddress}:`, error);
-    return {
-      volumeToken0: 0,
-      volumeToken1: 0,
-      volumeUSD: null
-    };
-  }
-}
-
-/**
  * Get the latest XIAN/USD price
  * @returns {Promise<number|null>} The XIAN/USD price or null if not available
  */
@@ -315,11 +158,7 @@ async function enhancePairsWithPrices(pairs) {
   const enhancedPairsPromises = pairs.map(async (pair) => {
     const { price: currentPrice, timestamp } = await getLatestPriceForPair(pair.pair_address);
     const { price: price24hAgo } = await get24hAgoPriceForPair(pair.pair_address);
-    const { volumeToken0, volumeToken1, volumeUSD } = await get24hVolumeForPair(
-      pair.pair_address, 
-      pair.token0, 
-      pair.token1
-    );
+    
     
     // Clone the pair object and initialize price fields with null
     const enhancedPair = { 
@@ -327,11 +166,7 @@ async function enhancePairsWithPrices(pairs) {
       priceXian: null,
       priceUSD: null,
       priceChange24h: null,
-      volume24h: {
-        token0: volumeToken0,
-        token1: volumeToken1,
-        usd: volumeUSD
-      },
+      
       lastPriceUpdate: null
     };
     
