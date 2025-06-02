@@ -14,7 +14,7 @@
 
 import { json } from "../utils/response.js";
 
-export const CACHE_TTL_SECONDS = 10;      // adjust freshness here
+export const CACHE_TTL_SECONDS = 5;      // adjust freshness here
 
 /* dedup in-flight refreshes: URL → Promise<Response> */
 const inflight = new Map();
