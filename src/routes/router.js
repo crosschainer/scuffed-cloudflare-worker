@@ -16,6 +16,8 @@ import { getTokenHolders }                  from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode } from "../handlers/contracts.js";
 import { getTokenBalance }                  from "../handlers/tokenBalance.js";
 
+import {transactionsHandler, getTransactionByHash, getTransactionsBySender} from "../handlers/transactions.js";
+
 /* ── static lookup table (exact paths) ────────────────────────────── */
 const STATIC = {
   "/":                   swaggerHandler,
@@ -25,6 +27,7 @@ const STATIC = {
   "/total-holders":      totalHoldersHandler,
   "/tokens":             getAllTokens,
   "/contracts":          getAllContracts,
+  "/transactions":       transactionsHandler,
 };
 
 /* ------------------------------------------------------------------ */
@@ -64,6 +67,18 @@ export async function handleRequest(event) {
   if (mCon)
     return withEdgeCache(req, event,
       () => getContractCode(req, { contractName: mCon[1] }));
+
+  //  /transactions/sender/<sender>
+  const mTxSender = path.match(/^\/transactions\/sender\/(.+)$/);
+  if (mTxSender)
+    return withEdgeCache(req, event,
+      () => getTransactionsBySender(req, { sender: decodeURIComponent(mTxSender[1]) }));
+
+  //  /transactions/<hash>
+  const mTx = path.match(/^\/transactions\/([^\/]+)$/);
+  if (mTx)
+    return withEdgeCache(req, event,
+      () => getTransactionByHash(req, { hash: mTx[1] }));
 
   /* ── static routes ------------------------------------------------- */
   const h = STATIC[path];

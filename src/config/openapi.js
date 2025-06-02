@@ -26,6 +26,10 @@ export const openapiSpec = {
       name: "Contracts",
       description: "Endpoints related to smart contracts",
     },
+    { 
+      name: "Transactions", 
+      description: "Endpoints related to blockchain transactions" 
+    }
   ],
   paths: {
     "/total-supply": {
@@ -549,5 +553,253 @@ export const openapiSpec = {
         }
       }
     },
+    "/transactions": {
+      get: {
+        tags:       ["Transactions"],
+        summary:    "Get recent transactions",
+        description:"Returns a paginated list of transactions, newest first",
+        parameters: [
+          {
+            name: "offset",
+            in: "query",
+            description: "Number of items to skip",
+            schema: { type: "integer", default: 0, minimum: 0 }
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum items to return (max 50)",
+            schema: { type: "integer", default: 25, minimum: 1, maximum: 50 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns transactions with pagination",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    transactions: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          block_time:   { type: "string", format: "date-time", example: "2025-01-01T12:34:56Z" },
+                          block_height: { type: "integer", example: 123456 },
+                          hash:         { type: "string", example: "BE3BE4D5D73C453A0B0AB2AF9267A922508CFF1C075F6801CB7173487ED89EE1" },
+                          contract:     { type: "string", example: "con_usdc" },
+                          function:     { type: "string", example: "transfer" },
+                          stamps:       { type: "integer", example: 50 },
+                          result:       { type: "string",  nullable: true, example: "OK" },
+                          success:      { type: "boolean", example: true },
+                          sender:       { type: "string",  example: "k:abc123…" },
+                          created:      { type: "string",  format: "date-time", example: "2025-01-01T12:34:55Z" },
+                          nonce:        { type: "integer", example: 42 },
+                          jsonContent:  {
+                            type: "object",
+                            nullable: true,
+                            example: { amount: 100, to: "k:def456…" }
+                          }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        offset:   { type: "integer", example: 0 },
+                        limit:    { type: "integer", example: 25 },
+                        next:     { type: "integer", example: 25,  nullable: true },
+                        previous: { type: "integer", example: null, nullable: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error:   { type: "string", example: "Failed to fetch transactions" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/transactions/{hash}": {
+      get: {
+        tags:       ["Transactions"],
+        summary:    "Get a single transaction by hash",
+        parameters: [
+          {
+            name: "hash",
+            in: "path",
+            required: true,
+            description: "Transaction hash",
+            schema: { type: "string" },
+            example: "BE3BE4D5D73C453A0B0AB2AF9267A922508CFF1C075F6801CB7173487ED89EE1"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Returns transaction details",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    block_time:   { type: "string", format: "date-time", example: "2025-01-01T12:34:56Z" },
+                    block_height: { type: "integer", example: 123456 },
+                    hash:         { type: "string", example: "BE3BE4D5D73C453A0B0AB2AF9267A922508CFF1C075F6801CB7173487ED89EE1" },
+                    contract:     { type: "string", example: "con_usdc" },
+                    function:     { type: "string", example: "transfer" },
+                    stamps:       { type: "integer", example: 50 },
+                    result:       { type: "string",  nullable: true, example: "OK" },
+                          success:      { type: "boolean", example: true },
+                          sender:       { type: "string",  example: "k:abc123…" },
+                          created:      { type: "string",  format: "date-time", example: "2025-01-01T12:34:55Z" },
+                          nonce:        { type: "integer", example: 42 },
+                          jsonContent:  {
+                            type: "object",
+                            nullable: true,
+                            example: { amount: 100, to: "k:def456…" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            description: "Transaction not found",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error: { type: "string", example: "Transaction not found" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error:   { type: "string", example: "Failed to fetch transaction" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions/sender/{sender}": {
+      get: {
+        tags: ["Transactions"],
+        summary: "Get transactions by sender",
+        description:
+          "Returns a paginated list of transactions for a single `sender`, ordered by newest block height first.",
+        parameters: [
+          {
+            name: "sender",
+            in: "path",
+            required: true,
+            description: "Wallet address that signed the transaction",
+            schema: { type: "string" },
+            example: "f15da2827e73a4a53c6fb44e446ab2863bc7d4389c7671a383a61943a97bb7b3"
+          },
+          {
+            name: "offset",
+            in: "query",
+            description: "Number of items to skip",
+            schema: { type: "integer", default: 0, minimum: 0 }
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum items to return (max 50)",
+            schema: { type: "integer", default: 25, minimum: 1, maximum: 50 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Paginated list of transactions for the sender",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    transactions: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          block_time:   { type: "string", format: "date-time", example: "2025-01-01T12:34:56Z" },
+                          block_height: { type: "integer", example: 534115 },
+                          hash:         { type: "string", example: "BE3BE4D5D73C453A0B0AB2AF9267A922508CFF1C075F6801CB7173487ED89EE1" },
+                          contract:     { type: "string", example: "con_usdc" },
+                          function:     { type: "string", example: "transfer" },
+                          stamps:       { type: "integer", example: 14 },
+                          result:       { type: "string", nullable: true, example: "OK" },
+                          success:      { type: "boolean", example: true },
+                          sender:       { type: "string", example: "k:abc123def456…" },
+                          created:      { type: "string", format: "date-time", example: "2025-01-01T12:34:55Z" },
+                          nonce:        { type: "integer", example: 42 },
+                          jsonContent:  {
+                            type: "object",
+                            nullable: true,
+                            example: { amount: 100, to: "k:def456…" }
+                          }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: "object",
+                      properties: {
+                        offset:   { type: "integer", example: 0 },
+                        limit:    { type: "integer", example: 25 },
+                        next:     { type: "integer", example: 25, nullable: true },
+                        previous: { type: "integer", example: null, nullable: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            description: "Server error",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    error:   { type: "string", example: "Failed to fetch transactions" },
+                    message: { type: "string", example: "Error message details" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
   },
 };
