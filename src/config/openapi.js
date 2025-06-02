@@ -68,9 +68,11 @@ export const openapiSpec = {
                 schema: {
                   type: "object",
                   properties: {
+                    maximumSupply: { type: "number", example: 123456789.123 },
+                    burnedSupply: { type: "number", example: 12345.123 },
                     totalSupply: { type: "number" },
-                    excludedSupply: { type: "number" },
                     circulatingSupply: { type: "number" },
+                    excludedSupply: { type: "number" },
                     excludedAddresses: {
                       type: "array",
                       items: {
