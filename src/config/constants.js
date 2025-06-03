@@ -20,6 +20,4 @@ export const EXCLUDED_KEYS = [
   "currency.balances:dao_funding_stream",
   "currency.balances:dao",
   "currency.balances:con_team_y1_linear_vesting",
-  "currency.balances:masternodes",
-  "currency.balances:con_farm_xian_usdc",
 ];
