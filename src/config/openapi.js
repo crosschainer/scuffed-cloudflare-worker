@@ -801,6 +801,51 @@ export const openapiSpec = {
     }
   }
 },
+"/pairs/{pairId}/pricechange24h": {
+  get: {
+    tags: ["Pairs"],
+    summary: "Get 24-hour price change (percentage) for a pair",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        description: "Pair identifier (value stored in dataIndexed.pair)",
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in: "query",
+        required: false,
+        description: "Denomination: 0 = token0-per-token1 (default), 1 = token1-per-token0",
+        schema: { type: "string", enum: ["0", "1"], default: "0" },
+        example: "1"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Current price, price 24 h ago, and % change",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId:      { type: "string", example: "1" },
+                token:       { type: "string", example: "0" },
+                priceNow:    { type: "number", format: "float", example: 0.002345 },
+                price24hAgo: { type: "number", format: "float", example: 0.002100 },
+                changePct:   { type: "number", format: "float", example: 11.67 }
+              }
+            }
+          }
+        }
+      },
+      "400": { /* …same shape as other endpoints… */ },
+      "500": { /* … */ }
+    }
+  }
+},
 
     "/transactions/sender/{sender}": {
       get: {

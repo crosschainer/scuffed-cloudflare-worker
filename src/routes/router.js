@@ -16,7 +16,7 @@ import { getTokenHolders } from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode } from "../handlers/contracts.js";
 import { getTokenBalance } from "../handlers/tokenBalance.js";
 import { pairVolume24hHandler } from "../handlers/tokenVolume.js";
-
+import { pairPriceChange24hHandler } from "../handlers/tokenPriceChange.js";
 import { transactionsHandler, getTransactionByHash, getTransactionsBySender } from "../handlers/transactions.js";
 
 /* ── static lookup table (exact paths) ────────────────────────────── */
@@ -91,6 +91,19 @@ if (mPairVol) {
   return withEdgeCache(req, event,
     () => pairVolume24hHandler(
       // clone the request with the new URL but same method/headers/etc.
+      new Request(u.toString(), req),
+      event
+    ));
+}
+
+//  /pairs/<pairId>/pricechange24h
+const mPairChg = path.match(/^\/pairs\/([^\/]+)\/pricechange24h$/);
+if (mPairChg) {
+  const u = new URL(req.url);
+  u.searchParams.set("pair", mPairChg[1]);   // preserve other params
+
+  return withEdgeCache(req, event,
+    () => pairPriceChange24hHandler(
       new Request(u.toString(), req),
       event
     ));
