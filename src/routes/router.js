@@ -16,9 +16,11 @@ import { getTokenHolders } from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode } from "../handlers/contracts.js";
 import { getTokenBalance } from "../handlers/tokenBalance.js";
 import { getPairs }                         from "../handlers/pairs.js";
+import { pairReservesHandler }       from "../handlers/pairReserves.js";
 import { pairVolume24hHandler } from "../handlers/tokenVolume.js";
 import { pairPriceChange24hHandler } from "../handlers/tokenPriceChange.js";
 import { transactionsHandler, getTransactionByHash, getTransactionsBySender } from "../handlers/transactions.js";
+import { getPairById }               from "../handlers/getPairById.js";
 
 /* ── static lookup table (exact paths) ────────────────────────────── */
 const STATIC = {
@@ -110,6 +112,32 @@ if (mPairChg) {
       event
     ));
 }
+
+//  /pairs/<pairId>/reserves
+const mPairRes = path.match(/^\/pairs\/([^\/]+)\/reserves$/);
+if (mPairRes) {
+  const u = new URL(req.url);
+  u.searchParams.set("pair", mPairRes[1]);          // keep any other qs params
+
+  return withEdgeCache(req, event,
+    () => pairReservesHandler(
+      new Request(u.toString(), req),
+      event
+    ));
+}
+//  /pairs/<pairId>   (pair metadata)
+const mPairMeta = path.match(/^\/pairs\/([^\/]+)$/);
+if (mPairMeta && !path.match(/^\/pairs\/[^\/]+\/.+/)) {   // ensure no sub-path
+  const u = new URL(req.url);
+  u.searchParams.set("pair", mPairMeta[1]);
+
+  return withEdgeCache(req, event,
+    () => getPairById(
+      new Request(u.toString(), req),
+      event
+    ));
+}
+
   /* ── static routes ------------------------------------------------- */
   const h = STATIC[path];
   if (!h) return json({ error: "Route not found" }, { status: 404 });

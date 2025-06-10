@@ -782,7 +782,54 @@ export const openapiSpec = {
     }
   }
 },
-
+"/pairs/{pairId}": {
+  get: {
+    tags: ["Pairs"],
+    summary: "Get token contracts that compose a pair",
+    parameters: [
+      {
+        name: "pairId",
+        in:   "path",
+        required: true,
+        schema: { type: "string" },
+        example: "12",
+        description: "Pair identifier"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Token contracts for the pair",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId: { type: "string", example: "12" },
+                token0: { type: "string", example: "con_usdc" },
+                token1: { type: "string", example: "con_xian" }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Pair not found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error:  { type: "string", example: "Pair not found" },
+                pairId: { type: "string", example: "99" }
+              }
+            }
+          }
+        }
+      },
+      "500": { /* server error */ }
+    }
+  }
+},
     "/pairs/{pairId}/volume24h": {
   get: {
     tags: ["Pairs"],
@@ -911,6 +958,41 @@ export const openapiSpec = {
       },
       "400": { /* …same shape as other endpoints… */ },
       "500": { /* … */ }
+    }
+  }
+},
+"/pairs/{pairId}/reserves": {
+  get: {
+    tags: ["Pairs"],
+    summary: "Get current reserves (token0 & token1) for a pair",
+    parameters: [
+      {
+        name: "pairId",
+        in:   "path",
+        required: true,
+        schema: { type: "string" },
+        description: "Pair identifier",
+        example: "12"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Current reserves",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId:   { type: "string", example: "12" },
+                reserve0: { type: "number", format: "float", example: 123456.78 },
+                reserve1: { type: "number", format: "float", example: 98765.43 }
+              }
+            }
+          }
+        }
+      },
+      "400": { /* bad pairId */ },
+      "500": { /* server error */ }
     }
   }
 },
