@@ -39,7 +39,7 @@ export const openapiSpec = {
     "/total-supply": {
       get: {
         tags: ["Supply"],
-        summary: "Get total Xian supply",
+        summary: "Get total Xian supply (Edge cache: 1 hour)",
         responses: {
           "200": {
             description: "Returns { totalSupply: number }",
@@ -62,7 +62,7 @@ export const openapiSpec = {
     "/circulating-supply": {
       get: {
         tags: ["Supply"],
-        summary: "Get circulating Xian supply",
+        summary: "Get circulating Xian supply (Edge cache: 1 hour)",
         responses: {
           "200": {
             description:
@@ -98,7 +98,7 @@ export const openapiSpec = {
     "/total-holders": {
       get: {
         tags: ["Supply"],
-        summary: "Get total number of Xian holders",
+        summary: "Get total number of Xian holders (Edge cache: 1 hour)",
         responses: {
           "200": {
             description: "Returns { totalHolders: number }",
@@ -119,7 +119,7 @@ export const openapiSpec = {
     "/tokens": {
       get: {
         tags: ["Tokens"],
-        summary: "Get all tokens with metadata",
+        summary: "Get all tokens with metadata (Edge cache: 10 minutes)",
         description: "Returns a paginated list of all tokens with their metadata",
         parameters: [
           {
@@ -190,7 +190,7 @@ export const openapiSpec = {
     "/tokens/{contractName}": {
       get: {
         tags: ["Tokens"],
-        summary: "Get metadata for a specific token",
+        summary: "Get metadata for a specific token (Edge cache: 1 hour)",
         description: "Returns detailed metadata for a specific token by contract name",
         parameters: [
           {
@@ -245,7 +245,7 @@ export const openapiSpec = {
     "/tokens/{contractName}/holders": {
       get: {
         tags: ["Tokens"],
-        summary: "Get holders of a specific token",
+        summary: "Get holders of a specific token (Edge cache: 5 seconds)",
         description: "Returns a paginated list of token holders with their balances",
         parameters: [
           {
@@ -349,7 +349,7 @@ export const openapiSpec = {
     "/token/{contractName}/balance/{address}": {
       get: {
         tags: ["Tokens"],
-        summary: "Get balance of an address for a given token contract",
+        summary: "Get balance of an address for a given token contract (Edge cache: 5 seconds)",
         description:
           "Returns the balance of `address` in the `contractName.balances` mapping. " +
           "If the address has no entry, balance will be `0`.",
@@ -421,7 +421,7 @@ export const openapiSpec = {
     "/contracts": {
       get: {
         tags: ["Contracts"],
-        summary: "Get all contracts",
+        summary: "Get all contracts (Edge cache: 10 minutes)",
         description: "Returns a paginated list of all contracts",
         parameters: [
           {
@@ -499,7 +499,7 @@ export const openapiSpec = {
     "/contracts/{contractName}": {
       get: {
         tags: ["Contracts"],
-        summary: "Get code for a specific contract",
+        summary: "Get code for a specific contract (Edge cache: 30 days)",
         description: "Returns the code and metadata for a specific contract by name",
         parameters: [
           {
@@ -562,7 +562,7 @@ export const openapiSpec = {
     "/transactions": {
       get: {
         tags:       ["Transactions"],
-        summary:    "Get recent transactions",
+        summary:    "Get recent transactions (Edge cache: 5 seconds)",
         description:"Returns a paginated list of transactions, newest first",
         parameters: [
           {
@@ -645,7 +645,7 @@ export const openapiSpec = {
     "/transactions/{hash}": {
       get: {
         tags:       ["Transactions"],
-        summary:    "Get a single transaction by hash",
+        summary:    "Get a single transaction by hash (Edge cache: 30 days)",
         parameters: [
           {
             name: "hash",
@@ -718,7 +718,7 @@ export const openapiSpec = {
     "/pairs": {
   get: {
     tags: ["Pairs"],
-    summary: "List all created pairs",
+    summary: "List all created pairs (Edge cache: 10 minutes)",
     parameters: [
       {
         name: "offset",
@@ -785,7 +785,7 @@ export const openapiSpec = {
 "/pairs/{pairId}": {
   get: {
     tags: ["Pairs"],
-    summary: "Get token contracts that compose a pair",
+    summary: "Get token contracts that compose a pair (Edge cache: 30 days)",
     parameters: [
       {
         name: "pairId",
@@ -833,7 +833,7 @@ export const openapiSpec = {
     "/pairs/{pairId}/volume24h": {
   get: {
     tags: ["Pairs"],
-    summary: "Get 24-hour swap volume for a pair",
+    summary: "Get 24-hour swap volume for a pair (Edge cache: 5 seconds)",
     parameters: [
       {
         name: "pairId",
@@ -919,7 +919,7 @@ export const openapiSpec = {
 "/pairs/{pairId}/pricechange24h": {
   get: {
     tags: ["Pairs"],
-    summary: "Get 24-hour price change (percentage) for a pair",
+    summary: "Get 24-hour price change (percentage) for a pair (Edge cache: 5 seconds)",
     parameters: [
       {
         name: "pairId",
@@ -964,7 +964,7 @@ export const openapiSpec = {
 "/pairs/{pairId}/reserves": {
   get: {
     tags: ["Pairs"],
-    summary: "Get current reserves (token0 & token1) for a pair",
+    summary: "Get current reserves (token0 & token1) for a pair (Edge cache: 5 seconds)",
     parameters: [
       {
         name: "pairId",
@@ -1000,7 +1000,7 @@ export const openapiSpec = {
     "/transactions/sender/{sender}": {
       get: {
         tags: ["Transactions"],
-        summary: "Get transactions by sender",
+        summary: "Get transactions by sender (Edge cache: 5 seconds)",
         description:
           "Returns a paginated list of transactions for a single `sender`, ordered by newest block height first.",
         parameters: [
