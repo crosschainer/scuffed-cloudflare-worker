@@ -2,32 +2,33 @@
 /*  router/index.js                                                   */
 /* ------------------------------------------------------------------ */
 
-import { json }           from "../utils/response.js";
-import { withEdgeCache }  from "../middleware/cache.js";
+import { json } from "../utils/response.js";
+import { withEdgeCache } from "../middleware/cache.js";
 
 /* ── handlers ─────────────────────────────────────────────────────── */
-import { swaggerHandler }           from "../handlers/swagger.js";
-import { totalSupplyHandler }       from "../handlers/totalSupply.js";
+import { swaggerHandler } from "../handlers/swagger.js";
+import { totalSupplyHandler } from "../handlers/totalSupply.js";
 import { circulatingSupplyHandler } from "../handlers/circulatingSupply.js";
-import { totalHoldersHandler }      from "../handlers/totalHolders.js";
+import { totalHoldersHandler } from "../handlers/totalHolders.js";
 
-import { getAllTokens, getTokenByName }     from "../handlers/tokens.js";
-import { getTokenHolders }                  from "../handlers/tokenHolders.js";
+import { getAllTokens, getTokenByName } from "../handlers/tokens.js";
+import { getTokenHolders } from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode } from "../handlers/contracts.js";
-import { getTokenBalance }                  from "../handlers/tokenBalance.js";
+import { getTokenBalance } from "../handlers/tokenBalance.js";
+import { pairVolume24hHandler } from "../handlers/tokenVolume.js";
 
-import {transactionsHandler, getTransactionByHash, getTransactionsBySender} from "../handlers/transactions.js";
+import { transactionsHandler, getTransactionByHash, getTransactionsBySender } from "../handlers/transactions.js";
 
 /* ── static lookup table (exact paths) ────────────────────────────── */
 const STATIC = {
-  "/":                   swaggerHandler,
-  "/openapi.json":       swaggerHandler,
-  "/total-supply":       totalSupplyHandler,
+  "/": swaggerHandler,
+  "/openapi.json": swaggerHandler,
+  "/total-supply": totalSupplyHandler,
   "/circulating-supply": circulatingSupplyHandler,
-  "/total-holders":      totalHoldersHandler,
-  "/tokens":             getAllTokens,
-  "/contracts":          getAllContracts,
-  "/transactions":       transactionsHandler,
+  "/total-holders": totalHoldersHandler,
+  "/tokens": getAllTokens,
+  "/contracts": getAllContracts,
+  "/transactions": transactionsHandler,
 };
 
 /* ------------------------------------------------------------------ */
@@ -38,8 +39,8 @@ export async function handleRequest(event) {
   if (req.method !== "GET")
     return json({ error: "Only GET allowed." }, { status: 405 });
 
-  const url      = new URL(req.url);
-  let   path     = url.pathname.replace(/\/+$/, "") || "/";
+  const url = new URL(req.url);
+  let path = url.pathname.replace(/\/+$/, "") || "/";
   const canonKey = path + url.search;          // full key for cache helper
 
   /* ── dynamic routes ------------------------------------------------ */
@@ -80,6 +81,20 @@ export async function handleRequest(event) {
     return withEdgeCache(req, event,
       () => getTransactionByHash(req, { hash: mTx[1] }));
 
+  //  /pairs/<pairId>/volume24h
+const mPairVol = path.match(/^\/pairs\/([^\/]+)\/volume24h$/);
+if (mPairVol) {
+  // build a fresh URL that keeps old params and adds `pair=<id>`
+  const u = new URL(req.url);
+  u.searchParams.set("pair", mPairVol[1]);      // add/overwrite
+
+  return withEdgeCache(req, event,
+    () => pairVolume24hHandler(
+      // clone the request with the new URL but same method/headers/etc.
+      new Request(u.toString(), req),
+      event
+    ));
+}
   /* ── static routes ------------------------------------------------- */
   const h = STATIC[path];
   if (!h) return json({ error: "Route not found" }, { status: 404 });

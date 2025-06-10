@@ -29,7 +29,11 @@ export const openapiSpec = {
     { 
       name: "Transactions", 
       description: "Endpoints related to blockchain transactions" 
-    }
+    },
+    {
+      name: "Pairs",
+      description: "Endpoints related to trading pairs",
+    },
   ],
   paths: {
     "/total-supply": {
@@ -711,6 +715,93 @@ export const openapiSpec = {
         }
       }
     },
+    "/pairs/{pairId}/volume24h": {
+  get: {
+    tags: ["Pairs"],
+    summary: "Get 24-hour swap volume for a pair",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        description: "Pair identifier (the value stored in dataIndexed.pair)",
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in:   "query",
+        required: false,
+        description: "Denomination: 0 = token0 (default), 1 = token1",
+        schema: {
+          type: "string",
+          enum: ["0", "1"],
+          default: "0"
+        },
+        example: "1"
+      }
+    
+    ],
+    responses: {
+       "200": {
+        description: "24-hour volume for the requested pair, denominated in the chosen token",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId:    { type: "string", example: "1" },
+                token:     { type: "string", example: "1" },
+                volume24h: { type: "number", format: "float", example: 98765.43 }
+              }
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Missing or invalid pairId",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string", example: "Missing \"pair\" query parameter" }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Pair not found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string", example: "Pair not found" }
+              }
+            }
+          }
+        }
+      },
+      "500": {
+        description: "Server error",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error:   { type: "string", example: "Internal error" },
+                message: { type: "string", example: "Error message details" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+},
+
     "/transactions/sender/{sender}": {
       get: {
         tags: ["Transactions"],
