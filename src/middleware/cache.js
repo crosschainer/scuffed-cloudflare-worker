@@ -73,8 +73,8 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
       return h;
     };
 
-    /* store if 2xx–4xx (but not 5xx) ------------------------------- */
-    if (bodyForUser.status < 500) {
+    /* store if 200 ------------------------------- */
+    if (bodyForUser.status === 200) {
       const cachedResp = new Response(bodyForCache.body, {
         status:  bodyForUser.status,
         headers: makeHeaders()
