@@ -32,7 +32,7 @@ export const openapiSpec = {
     },
     {
       name: "Pairs",
-      description: "Endpoints related to trading pairs",
+      description: "Endpoints related to trading pairs on SnakExchange",
     },
   ],
   paths: {
