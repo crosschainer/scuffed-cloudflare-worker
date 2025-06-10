@@ -15,6 +15,7 @@ import { getAllTokens, getTokenByName } from "../handlers/tokens.js";
 import { getTokenHolders } from "../handlers/tokenHolders.js";
 import { getAllContracts, getContractCode } from "../handlers/contracts.js";
 import { getTokenBalance } from "../handlers/tokenBalance.js";
+import { getPairs }                         from "../handlers/pairs.js";
 import { pairVolume24hHandler } from "../handlers/tokenVolume.js";
 import { pairPriceChange24hHandler } from "../handlers/tokenPriceChange.js";
 import { transactionsHandler, getTransactionByHash, getTransactionsBySender } from "../handlers/transactions.js";
@@ -26,6 +27,7 @@ const STATIC = {
   "/total-supply": totalSupplyHandler,
   "/circulating-supply": circulatingSupplyHandler,
   "/total-holders": totalHoldersHandler,
+  "/pairs": getPairs,
   "/tokens": getAllTokens,
   "/contracts": getAllContracts,
   "/transactions": transactionsHandler,

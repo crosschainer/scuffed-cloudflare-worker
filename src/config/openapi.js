@@ -715,6 +715,74 @@ export const openapiSpec = {
         }
       }
     },
+    "/pairs": {
+  get: {
+    tags: ["Pairs"],
+    summary: "List all created pairs",
+    parameters: [
+      {
+        name: "offset",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", minimum: 0, default: 0 },
+        description: "Zero-based row offset"
+      },
+      {
+        name: "limit",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 50, default: 10 },
+        description: "Rows per page (max 50)"
+      },
+      {
+        name: "order",
+        in:   "query",
+        required: false,
+        schema: { type: "string", enum: ["asc", "desc"], default: "asc" },
+        description: "Pair-id order: asc = oldest→newest, desc = newest→oldest"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Paginated list of pairs",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairs: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      pair:   { type: "string", example: "42" },
+                      token0: { type: "string", example: "con_usdc" },
+                      token1: { type: "string", example: "con_xian" }
+                    }
+                  }
+                },
+                pagination: {
+                  type: "object",
+                  properties: {
+                    offset:   { type: "integer", example: 20 },
+                    limit:    { type: "integer", example: 10 },
+                    total:    { type: "integer", example: 117 },
+                    next:     { type: ["integer","null"], example: 30 },
+                    previous: { type: ["integer","null"], example: 10 },
+                    order:    { type: "string", example: "desc" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "400": { /* bad param */ },
+      "500": { /* server error */ }
+    }
+  }
+},
+
     "/pairs/{pairId}/volume24h": {
   get: {
     tags: ["Pairs"],
