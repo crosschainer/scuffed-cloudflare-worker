@@ -24,12 +24,13 @@ import { transactionsHandler,
          getTransactionsBySender }                   from "../handlers/transactions.js";
 import { getPairById }                               from "../handlers/getPairById.js";
 import { tokenDistributionHandler }                  from "../handlers/tokenDistribution.js";
+import { batchHandler }                              from "../handlers/batch.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
-const TTL_5S     = 5;                    // volatile
-const TTL_10M    = 60 * 10;             // lists that change occasionally
-const TTL_1H     = 60 * 60;
-const TTL_30_D   = 60 * 60 * 24 * 30;   // immutable metadata (≈ 30 days)
+const TTL_5S   = 5;
+const TTL_10M  = 60 * 10;
+const TTL_1H   = 60 * 60;
+const TTL_30_D = 60 * 60 * 24 * 30;
 
 /* ── static lookup table (exact paths) ───────────────────────────── */
 const STATIC = {
@@ -47,130 +48,132 @@ const STATIC = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Entry point                                                       */
+/*  Entry point – export in Wrangler style                            */
 /* ------------------------------------------------------------------ */
-export async function handleRequest(event) {
-  const req = event.request;
-  if (req.method !== "GET")
-    return json({ error: "Only GET allowed." }, { status: 405 });
+export default {
+  async fetch(req, env, ctx) {
+    /* ── CORS pre-flight ------------------------------------------ */
+    if (req.method === "OPTIONS")
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin":  "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
 
-  const url  = new URL(req.url);
-  const path = url.pathname.replace(/\/+$/, "") || "/";
+    const url  = new URL(req.url);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
 
-  /* ── dynamic routes --------------------------------------------- */
+    /* ── /batch (POST)  ------------------------------------------- */
+    if (req.method === "POST" && path === "/batch")
+      return batchHandler(req, env, ctx);          // no edge cache on wrapper
 
-  /* /token/<contract>/balance/<address> */
-  const mBal = path.match(/^\/token\/([^\/]+)\/balance\/([^\/]+)$/);
-  if (mBal)
-    return withEdgeCache(
-      req, event,
-      () => getTokenBalance(req, { contractName: mBal[1], address: mBal[2] })
-    );
+    /* Reject any non-GET after /batch is handled */
+    if (req.method !== "GET")
+      return json({ error: "Only GET endpoints or POST /batch allowed." }, { status: 405 });
 
-  /* /tokens/<contract>/holders */
-  const mHold = path.match(/^\/tokens\/([^\/]+)\/holders$/);
-  if (mHold)
-    return withEdgeCache(
-      req, event,
-      () => getTokenHolders(req, { contractName: mHold[1] })
-    );
+    /* ── dynamic GET routes -------------------------------------- */
 
-  /* /tokens/<contract> – token metadata (mutable) */
-  const mTok = path.match(/^\/tokens\/([^\/]+)$/);
-  if (mTok)
-    return withEdgeCache(
-      req, event,
-      () => getTokenByName(req, { contractName: mTok[1] }),
-      TTL_1H
-    );
+    /* /token/<contract>/balance/<address> */
+    const mBal = path.match(/^\/token\/([^\/]+)\/balance\/([^\/]+)$/);
+    if (mBal)
+      return withEdgeCache(req, ctx,
+        () => getTokenBalance(req, { contractName: mBal[1], address: mBal[2] })
+      );
 
-  /* /contracts/<contract> – contract code (immutable) */
-  const mCon = path.match(/^\/contracts\/([^\/]+)$/);
-  if (mCon)
-    return withEdgeCache(
-      req, event,
-      () => getContractCode(req, { contractName: mCon[1] }),
-      TTL_30_D
-    );
+    /* /tokens/<contract>/holders */
+    const mHold = path.match(/^\/tokens\/([^\/]+)\/holders$/);
+    if (mHold)
+      return withEdgeCache(req, ctx,
+        () => getTokenHolders(req, { contractName: mHold[1] })
+      );
 
-  /* /transactions/sender/<sender> */
-  const mTxSender = path.match(/^\/transactions\/sender\/(.+)$/);
-  if (mTxSender)
-    return withEdgeCache(
-      req, event,
-      () => getTransactionsBySender(req, { sender: decodeURIComponent(mTxSender[1]) }),
-      TTL_5S
-    );
+    /* /tokens/<contract> */
+    const mTok = path.match(/^\/tokens\/([^\/]+)$/);
+    if (mTok)
+      return withEdgeCache(req, ctx,
+        () => getTokenByName(req, { contractName: mTok[1] }),
+        TTL_1H
+      );
 
-  /* /transactions/<hash> – immutable once on chain */
-  const mTx = path.match(/^\/transactions\/([^\/]+)$/);
-  if (mTx)
-    return withEdgeCache(
-      req, event,
-      () => getTransactionByHash(req, { hash: mTx[1] }),
-      TTL_30_D
-    );
+    /* /contracts/<contract> */
+    const mCon = path.match(/^\/contracts\/([^\/]+)$/);
+    if (mCon)
+      return withEdgeCache(req, ctx,
+        () => getContractCode(req, { contractName: mCon[1] }),
+        TTL_30_D
+      );
 
-  /* /pairs/<pairId>/volume24h */
-  const mPairVol = path.match(/^\/pairs\/([^\/]+)\/volume24h$/);
-  if (mPairVol) {
-    const u = new URL(req.url);
-    u.searchParams.set("pair", mPairVol[1]);
-    return withEdgeCache(
-      req, event,
-      () => pairVolume24hHandler(new Request(u.toString(), req), event)
-    );
+    /* /transactions/sender/<sender> */
+    const mTxSender = path.match(/^\/transactions\/sender\/(.+)$/);
+    if (mTxSender)
+      return withEdgeCache(req, ctx,
+        () => getTransactionsBySender(req, { sender: decodeURIComponent(mTxSender[1]) }),
+        TTL_5S
+      );
+
+    /* /transactions/<hash> */
+    const mTx = path.match(/^\/transactions\/([^\/]+)$/);
+    if (mTx)
+      return withEdgeCache(req, ctx,
+        () => getTransactionByHash(req, { hash: mTx[1] }),
+        TTL_30_D
+      );
+
+    /* /pairs/<id>/volume24h */
+    const mPairVol = path.match(/^\/pairs\/([^\/]+)\/volume24h$/);
+    if (mPairVol) {
+      url.searchParams.set("pair", mPairVol[1]);
+      return withEdgeCache(req, ctx,
+        () => pairVolume24hHandler(new Request(url.toString(), req), ctx)
+      );
+    }
+
+    /* /pairs/<id>/pricechange24h */
+    const mPairChg = path.match(/^\/pairs\/([^\/]+)\/pricechange24h$/);
+    if (mPairChg) {
+      url.searchParams.set("pair", mPairChg[1]);
+      return withEdgeCache(req, ctx,
+        () => pairPriceChange24hHandler(new Request(url.toString(), req), ctx)
+      );
+    }
+
+    /* /pairs/<id>/reserves */
+    const mPairRes = path.match(/^\/pairs\/([^\/]+)\/reserves$/);
+    if (mPairRes) {
+      url.searchParams.set("pair", mPairRes[1]);
+      return withEdgeCache(req, ctx,
+        () => pairReservesHandler(new Request(url.toString(), req), ctx)
+      );
+    }
+
+    /* /pairs/<id> */
+    const mPairMeta = path.match(/^\/pairs\/([^\/]+)$/);
+    if (mPairMeta && !path.match(/^\/pairs\/[^\/]+\/.+/)) {
+      url.searchParams.set("pair", mPairMeta[1]);
+      return withEdgeCache(req, ctx,
+        () => getPairById(new Request(url.toString(), req), ctx),
+        TTL_30_D
+      );
+    }
+
+    /* /tokens/<contract>/distribution */
+    const mDist = path.match(/^\/tokens\/([^\/]+)\/distribution$/);
+    if (mDist)
+      return withEdgeCache(req, ctx,
+        () => tokenDistributionHandler(req, { contractName: mDist[1] }),
+        30
+      );
+
+    /* ── static GET routes --------------------------------------- */
+    const entry = STATIC[path];
+    if (!entry) return json({ error: "Route not found" }, { status: 404 });
+
+    const { handler, ttl } =
+      typeof entry === "function" ? { handler: entry, ttl: undefined } : entry;
+
+    return withEdgeCache(req, ctx, () => handler(req, ctx), ttl);
   }
-
-  /* /pairs/<pairId>/pricechange24h */
-  const mPairChg = path.match(/^\/pairs\/([^\/]+)\/pricechange24h$/);
-  if (mPairChg) {
-    const u = new URL(req.url);
-    u.searchParams.set("pair", mPairChg[1]);
-    return withEdgeCache(
-      req, event,
-      () => pairPriceChange24hHandler(new Request(u.toString(), req), event)
-    );
-  }
-
-  /* /pairs/<pairId>/reserves */
-  const mPairRes = path.match(/^\/pairs\/([^\/]+)\/reserves$/);
-  if (mPairRes) {
-    const u = new URL(req.url);
-    u.searchParams.set("pair", mPairRes[1]);
-    return withEdgeCache(
-      req, event,
-      () => pairReservesHandler(new Request(u.toString(), req), event)
-    );
-  }
-
-  /* /pairs/<pairId> – pair metadata (immutable) */
-  const mPairMeta = path.match(/^\/pairs\/([^\/]+)$/);
-  if (mPairMeta && !path.match(/^\/pairs\/[^\/]+\/.+/)) {
-    const u = new URL(req.url);
-    u.searchParams.set("pair", mPairMeta[1]);
-    return withEdgeCache(
-      req, event,
-      () => getPairById(new Request(u.toString(), req), event),
-      TTL_30_D
-    );
-  }
-  /* /tokens/<contract>/distribution */
-const mDist = path.match(/^\/tokens\/([^\/]+)\/distribution$/);
-if (mDist)
-  return withEdgeCache(
-    req, event,
-    () => tokenDistributionHandler(req, { contractName: mDist[1] }),
-    30 
-  );
-  /* ── static routes ---------------------------------------------- */
-  const entry = STATIC[path];
-  if (!entry) return json({ error: "Route not found" }, { status: 404 });
-
-  const { handler, ttl } =
-    typeof entry === "function"
-      ? { handler: entry, ttl: undefined }
-      : entry;
-
-  return withEdgeCache(req, event, () => handler(req, event), ttl);
-}
+};

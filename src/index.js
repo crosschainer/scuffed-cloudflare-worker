@@ -1,13 +1,14 @@
 /**
  * Main entry point for the Cloudflare Worker
- * 
- * This file is intentionally minimal, delegating all functionality to the
- * appropriate modules. This makes the codebase more maintainable and scalable.
+ * ------------------------------------------
+ * The router module now exports a *default* object with a `.fetch()` method,
+ * so we simply delegate to that instead of importing a named handleRequest.
  */
 
-import { handleRequest } from './routes/router.js';
+import router from './routes/router.js';
 
-// Register the fetch event listener
 addEventListener("fetch", (event) => {
-  event.respondWith(handleRequest(event));
+  // router.fetch(request, env?, ctx?) — in a Service-Worker build
+  // `env` is not injected, so pass undefined; the ExecutionContext is `event`.
+  event.respondWith(router.fetch(event.request, undefined, event));
 });

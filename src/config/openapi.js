@@ -15,6 +15,11 @@ export const openapiSpec = {
   },
   tags: [
     {
+  name: "Batch",
+  description: "Combine several GET endpoints into a single request"
+},
+
+    {
       name: "Supply",
       description: "Endpoints related to coin supply",
     },
@@ -1124,6 +1129,91 @@ export const openapiSpec = {
         }
       }
     },
+    "/batch": {
+  post: {
+    tags: ["Batch"],
+    summary: "Bundle multiple GET endpoints into one response",
+    description:
+      "Send a list of **relative** paths (same as you would call individually)\n" +
+      "and get a JSON object keyed by those paths.  The Worker fetches each\n" +
+      "sub-request internally, so normal edge-cache rules still apply.\n\n" +
+      "**Limits**\n" +
+      "• max 20 paths per request\n" +
+      "• only endpoints documented in this spec are allowed\n" +
+      "• each sub-request counts toward Cloudflare’s 50-sub-request limit.",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              paths: {
+                type: "array",
+                maxItems: 20,
+                items:   { type: "string", example: "/total-supply" }
+              }
+            },
+            required: ["paths"]
+          }
+        }
+      }
+    },
+    responses: {
+      "200": {
+        description: "Bundle with one entry per path plus `_meta.maxAge`",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                _meta: {
+                  type: "object",
+                  properties: {
+                    maxAge: {
+                      type: "integer",
+                      description: "Shortest Cache-Control max-age among all parts",
+                      example: 5
+                    }
+                  }
+                }
+              },
+              additionalProperties: true
+              /* each dynamic property (e.g. '/total-supply') holds that
+                 endpoint’s normal 200-response schema */
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Bad request (missing body, >20 paths, etc.)",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error:   { type: "string", example: "Invalid JSON." }
+              }
+            }
+          }
+        }
+      },
+      "405": {
+        description: "Method not allowed (only POST supported)",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string", example: "Use POST with JSON body" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+},
     "components": {
       "schemas": {
         "DistBucket": {
@@ -1135,6 +1225,7 @@ export const openapiSpec = {
         }
       }
     }
+
     
 
   },
