@@ -1,44 +1,40 @@
 import { json } from "../utils/response.js";
-import { CORS_HEADERS } from "../middleware/cache.js";   // re-use common CORS set
+import { CORS_HEADERS } from "../middleware/cache.js";
 
-/* How many sub-requests may run in parallel */
 const CONCURRENCY = 5;
 
-/* optional: retry once on transient 5xx */
-async function fetchJson(url, init) {
-  let resp = await fetch(url, init);
-  if (resp.status >= 500) {          // retry once after 250 ms
-    await new Promise(r => setTimeout(r, 250));
-    resp = await fetch(url, init);
-  }
-  return resp;
-}
+/* helper: run N promises in parallel */
+async function pool(items, fn, n = CONCURRENCY) {
+  const it = items[Symbol.iterator]();
+  const out = [];
+  const running = new Set();
 
-/* micro promise-pool */
-async function pool(items, fn) {
-  const it   = items[Symbol.iterator]();
-  const out  = [];
-  const work = new Set();
-
-  const spin = () => {
+  const step = () => {
     const { value, done } = it.next();
     if (done) return;
     const p = Promise.resolve(fn(value))
-      .then(r => { work.delete(p); out.push(r); spin(); })
-      .catch(e => { work.delete(p); out.push(e); spin(); });
-    work.add(p);
+      .then(x => { running.delete(p); out.push(x); step(); })
+      .catch(e => { running.delete(p); out.push(e); step(); });
+    running.add(p);
   };
-
-  Array.from({ length: CONCURRENCY }).forEach(spin);
-  await Promise.all(work);
+  Array.from({ length: n }).forEach(step);
+  await Promise.all(running);
   return out;
+}
+
+/* try JSON, fall back to text */
+async function safeParse(resp) {
+  const ct = resp.headers.get("Content-Type") || "";
+  if (ct.includes("application/json")) {
+    return await resp.json().catch(() => null);
+  }
+  return await resp.text().catch(() => null);
 }
 
 export async function batchHandler(request, env, ctx) {
   if (request.method !== "POST")
     return json({ error: "Use POST with JSON body" }, { status: 405, headers: CORS_HEADERS });
 
-  /* ── body parsing ------------------------------------------------ */
   let body;
   try { body = await request.json(); }
   catch { return json({ error: "Invalid JSON." }, { status: 400, headers: CORS_HEADERS }); }
@@ -48,36 +44,35 @@ export async function batchHandler(request, env, ctx) {
     return json({ error: "Body must contain non-empty 'paths' array" },
                 { status: 400, headers: CORS_HEADERS });
 
-  /* ── fan-out ----------------------------------------------------- */
-  const origin   = new URL(request.url).origin;
-  const init     = { headers: { Accept: "application/json" } };
+  const origin = new URL(request.url).origin;
+  const init   = { headers: { Accept: "application/json" } };
 
-  const results  = await pool(paths, async p => {
+  const results = await pool(paths, async p => {
+    const full = origin + p;
     try {
-      const resp   = await fetchJson(origin + p, init);
-      const data   = await resp.json().catch(() => null);
+      const resp   = await fetch(full, init);
+      const data   = await safeParse(resp);
       const cc     = resp.headers.get("Cache-Control") || "";
-      const m      = cc.match(/max-age=(\d+)/);
-      const maxAge = m ? parseInt(m[1], 10) : 0;
-      return { path: p, ok: resp.ok, status: resp.status, data, maxAge };
+      const max    = (cc.match(/max-age=(\d+)/) || [0,0])[1] | 0;
+      return { path: p, url: full, ok: resp.ok, status: resp.status, data, max };
     } catch (e) {
-      return { path: p, ok: false, status: 599, data: { error: e.message }, maxAge: 0 };
+      return { path: p, url: full, ok: false, status: 599,
+               data: { error: e.message }, max: 0 };
     }
   });
 
-  /* ── assemble response ------------------------------------------ */
-  const out  = {};
-  let ttl    = Infinity;
+  /* assemble */
+  const out = {};
+  let ttl   = Infinity;
 
   for (const r of results) {
     out[r.path] = r.ok
       ? r.data
-      : { error: "Sub-request failed", status: r.status, details: r.data };
+      : { error: "Sub-request failed", status: r.status, url: r.url, body: r.data };
 
-    ttl = Math.min(ttl, r.maxAge || Infinity);
+    ttl = Math.min(ttl, r.max || Infinity);
   }
   if (!isFinite(ttl)) ttl = 5;
-
   out._meta = { maxAge: ttl };
 
   return json(out, {
