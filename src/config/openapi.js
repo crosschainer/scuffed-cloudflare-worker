@@ -1213,7 +1213,51 @@ export const openapiSpec = {
       }
     }
   }
+},"/pairs/{pairId}/candles": {
+  get: {
+    tags:["Pairs"],
+    summary:"OHLCV candlesticks for a pair (Edge cache: 5 seconds)",
+    parameters:[
+      { name:"pairId", in:"path", required:true, schema:{type:"string"}, example:"1" },
+      { name:"interval", in:"query", schema:{type:"string",default:"1h"},
+        description:"m = minutes, h = hours, d = days (e.g. 5m, 1h, 4h, 1d)" },
+      { name:"range", in:"query", schema:{type:"string",default:"1d"},
+        description:"Look-back window (same units as interval). Max 30d." },
+      { name:"token",  in:"query", schema:{type:"string",enum:["0","1"],default:"0"},
+        description:"Price/volume denomination (0 = token0, 1 = token1)" }
+    ],
+    responses:{
+      "200":{
+        description:"Array of candles",
+        content:{
+          "application/json":{
+            schema:{
+              type:"object",
+              properties:{
+                pairId:{type:"string"},
+                interval:{type:"string"},
+                token:{type:"string"},
+                candles:{
+                  type:"array",
+                  items:{
+                    type:"object",
+                    properties:{
+                      t:{type:"string",format:"date-time"},
+                      open:{type:"number"}, high:{type:"number"},
+                      low:{type:"number"}, close:{type:"number"},
+                      volume:{type:"number"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 },
+
     "components": {
       "schemas": {
         "DistBucket": {
