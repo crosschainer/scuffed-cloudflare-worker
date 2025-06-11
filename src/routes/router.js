@@ -64,6 +64,7 @@ export default {
           "Access-Control-Allow-Headers": "Content-Type"
         }
       });
+      
 
     const url  = new URL(req.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
