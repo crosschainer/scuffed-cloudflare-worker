@@ -1253,7 +1253,98 @@ export const openapiSpec = {
             }
           }
         }
+      },
+            "400": {
+        description: "Bad request (too many buckets or invalid params)",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error:      { type: "string", example: "Too many candles (60000 > 5000)." },
+                suggestion: { type: "string", example: "Use interval >= 2h", nullable: true }
+              }
+            }
+          }
+        }
+      },
+
+    }
+  }
+},
+"/pairs/{pairId}/trades": {
+  get: {
+    tags: ["Pairs"],
+    summary: "Recent trades for a pair (Edge cache: 5 seconds)",
+    parameters: [
+      {
+        name: "pairId",
+        in:   "path",
+        required: true,
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in:   "query",
+        required: false,
+        schema: { type: "string", enum: ["0", "1"], default: "0" },
+        description: "Price / amount denomination (0 = token0, 1 = token1)"
+      },
+      {
+        name: "offset",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", default: 0, minimum: 0 },
+        description: "Row offset (newest = 0)"
+      },
+      {
+        name: "limit",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", default: 50, minimum: 1, maximum: 100 },
+        description: "Rows per page (max 100)"
       }
+    ],
+    responses: {
+      "200": {
+        description: "Paginated list of newest-first trades",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId: { type: "string" },
+                token:  { type: "string", example: "0" },
+                trades: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      created: { type: "string", format: "date-time" },
+                      side:    { type: "string", enum: ["buy", "sell"] },
+                      amount:  { type: "number", format: "float" },
+                      price:   { type: "number", format: "float" }
+                    }
+                  }
+                },
+                pagination: {
+                  type: "object",
+                  properties: {
+                    offset:   { type: "integer" },
+                    limit:    { type: "integer" },
+                    total:    { type: "integer" },
+                    next:     { type: ["integer", "null"] },
+                    previous: { type: ["integer", "null"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "400": { description: "Bad request" },
+      "500": { description: "Server error" }
     }
   }
 },

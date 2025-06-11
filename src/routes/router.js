@@ -26,6 +26,7 @@ import { getPairById }                               from "../handlers/getPairBy
 import { tokenDistributionHandler }                  from "../handlers/tokenDistribution.js";
 import { batchHandler }                              from "../handlers/batch.js";
 import { pairCandlesHandler }                         from "../handlers/pairCandles.js";
+import { pairTradesHandler }                          from "../handlers/pairTrades.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
 const TTL_5S   = 5;
@@ -149,6 +150,16 @@ export default {
         () => pairReservesHandler(new Request(url.toString(), req), ctx)
       );
     }
+
+    /* /pairs/<id>/trades */
+const mTrades = path.match(/^\/pairs\/([^\/]+)\/trades$/);
+if (mTrades)
+  return withEdgeCache(
+    req, ctx,
+    () => pairTradesHandler(req),
+    TTL_5S
+  );
+
 
     /* /pairs/<id> */
     const mPairMeta = path.match(/^\/pairs\/([^\/]+)$/);
