@@ -2,144 +2,162 @@ import { executeGraphQLQuery } from "../utils/graphql.js";
 import { json }                from "../utils/response.js";
 
 /* safety knobs --------------------------------------------------- */
-const CHUNK        = 1000;        // rows per GraphQL call
-const MAX_CANDLES  = 5_000;       // hard ceiling on buckets per response
+const CHUNK        = 1_000;         // GraphQL page size
+const MAX_CANDLES  = 5_000;         // hard ceiling per response
 
-/* helper: "5m" | "1h" | "2d" → ms ------------------------------- */
+/* "5m" | "2h" | "7d" → ms ---------------------------------------- */
 function intervalMs(str = "1h") {
   const m = str.match(/^(\d+)([mhd])$/i);
   if (!m) throw new Error("Bad interval");
   const n = +m[1];
   return m[2] === "m" ? n * 60 * 1e3
        : m[2] === "h" ? n * 60 * 60 * 1e3
-       :                n * 24 * 60 * 60 * 1e3;
+                      : n * 24 * 60 * 60 * 1e3;
 }
 
-/* price in token0 units ----------------------------------------- */
-function calcPrice0(d = {}) {
+/* token0 price helper -------------------------------------------- */
+const price0 = d => {
   const { amount0In, amount0Out, amount1In, amount1Out } = d;
-  if (amount0In > 0 && amount1Out > 0) return amount0In / amount1Out;
-  if (amount1In > 0 && amount0Out > 0) return amount0Out / amount1In;
-  return null;
-}
+  return amount0In > 0 && amount1Out > 0 ? amount0In / amount1Out
+       : amount1In > 0 && amount0Out > 0 ? amount0Out / amount1In
+       : null;
+};
 
 export async function pairCandlesHandler(request /*, ctx */) {
   try {
-    /* ── query-string params ------------------------------------ */
-    const url     = new URL(request.url);
-    const pairId  = url.pathname.match(/^\/pairs\/([^\/]+)\/candles$/)?.[1];
-    const token   = url.searchParams.get("token")    ?? "0";
-    const ivStr   = url.searchParams.get("interval") ?? "1h";
-    const rangeStr= url.searchParams.get("range")    ?? "1d";
+    /* ── params -------------------------------------------------- */
+    const url      = new URL(request.url);
+    const pairId   = url.pathname.match(/^\/pairs\/([^\/]+)\/candles$/)?.[1];
+    const token    = url.searchParams.get("token")    ?? "0";
+    const ivStr    = url.searchParams.get("interval") ?? "1h";
+    const rangeStr = url.searchParams.get("range")    ?? "1d";
+    const beforeQ  = url.searchParams.get("before");   // ms or ISO
+    const afterQ   = url.searchParams.get("after");
 
-    if (!pairId)
-      return json({ error: "Missing pairId" }, { status: 400 });
-    if (!["0", "1"].includes(token))
-      return json({ error: 'token must be "0" or "1"' }, { status: 400 });
+    if (!pairId) return json({ error:"Missing pairId" }, { status:400 });
+    if (!["0","1"].includes(token))
+      return json({ error:'token must be "0" or "1"' }, { status:400 });
+    if (beforeQ && afterQ)
+      return json({ error:"Use only one of before or after" }, { status:400 });
 
-    /* ── interval / range parsing + guard ----------------------- */
     let ivMs, rangeMs;
-    try {
-      ivMs    = intervalMs(ivStr);
-      rangeMs = intervalMs(rangeStr);
-    } catch {
-      return json({ error: "Bad interval or range format" }, { status: 400 });
+    try { ivMs = intervalMs(ivStr); }
+    catch { return json({ error:"Bad interval format" }, { status:400 }); }
+
+    /* Cursor window = MAX_CANDLES * interval -------------------- */
+    rangeMs = intervalMs(rangeStr);
+    if (beforeQ || afterQ) rangeMs = MAX_CANDLES * ivMs;
+
+    /* calculate since/until ------------------------------------- */
+    const now = Date.now();
+    const beforeMs = beforeQ ? Date.parse(beforeQ) || +beforeQ : null;
+    const afterMs  = afterQ  ? Date.parse(afterQ)  || +afterQ  : null;
+
+    const since   = beforeMs
+      ? beforeMs - rangeMs
+      : afterMs
+        ? afterMs
+        : now - rangeMs;
+
+    const until   = beforeMs
+      ? beforeMs
+      : afterMs
+        ? afterMs + rangeMs
+        : undefined;                       // open-ended (= now)
+
+    /* bucket cap (range mode) ----------------------------------- */
+    if (!beforeMs && !afterMs) {
+      const buckets = Math.ceil(rangeMs / ivMs);
+      if (buckets > MAX_CANDLES) {
+        const need = rangeMs / MAX_CANDLES;
+        const m=60e3, h=60*m, d=24*h;
+        const sug = need<=m ? `${Math.ceil(need/m)}m`
+                 : need<=h ? `${Math.ceil(need/h)}h`
+                           : `${Math.ceil(need/d)}d`;
+        return json({ error:`Too many candles (${buckets}>${MAX_CANDLES})`,
+                      suggestion:`Use interval ≥ ${sug}`},{ status:400});
+      }
     }
 
-    const bucketCount = Math.ceil(rangeMs / ivMs);
-    if (bucketCount > MAX_CANDLES) {
-      /* suggest a bigger interval that fits the cap */
-      const reqMs = rangeMs / MAX_CANDLES;
-      const minute = 60 * 1e3, hour = 60 * minute, day = 24 * hour;
-      const nextInt =
-        reqMs <= minute ? `${Math.ceil(reqMs / minute)}m`
-      : reqMs <= hour   ? `${Math.ceil(reqMs / hour  )}h`
-                        : `${Math.ceil(reqMs / day   )}d`;
+    const sinceIso = new Date(since).toISOString().replace("Z","");
+    const untilIso = until ? new Date(until).toISOString().replace("Z","") : null;
 
-      return json(
-        {
-          error: `Too many candles (${bucketCount} > ${MAX_CANDLES})`,
-          suggestion: `Use interval >= ${nextInt}`
-        },
-        { status: 400 }
-      );
-    }
-
-    /* ── timeframe bounds --------------------------------------- */
-    const now      = Date.now();
-    const since    = now - rangeMs;
-    const sinceIso = new Date(since).toISOString().replace("Z", "");
-
-    /* ── GraphQL loop (DESC order) ------------------------------ */
-    const qry = `
-      query Swaps($pair:String!,$since:Datetime!,$first:Int!,$offset:Int!) {
+    /* ── GraphQL loop ------------------------------------------- */
+    const gql = `
+      query Swaps($pair:String!,$since:Datetime!,$until:Datetime,$first:Int!,$offset:Int!){
         allEvents(
           condition:{ contract:"con_pairs", event:"Swap" }
           filter:{
             dataIndexed:{ contains:{ pair:$pair } }
-            created:{ greaterThan:$since }
+            created:{
+              greaterThan:$since
+              ${untilIso ? "lessThan:$until" : ""}
+            }
           }
           orderBy: CREATED_DESC
-          first:  $first
-          offset: $offset
+          first:$first
+          offset:$offset
         ){ edges{ node{ created data } } }
       }`;
 
-    let offset = 0, done = false;
-    const candles = new Map();            // bucketStart → candlestick
+    let offset=0, done=false;
+    const map = new Map();               // bucketStart → candle
 
-    const add = (tMs, p0, v0, v1) => {
-      const c = candles.get(tMs) ?? {
-        t: new Date(tMs).toISOString(),
-        open: null, high: 0, low: Infinity, close: null,
-        vol0: 0, vol1: 0
+    const ins = (k,p0,v0,v1) => {
+      const c = map.get(k) ?? {
+        t: new Date(k).toISOString(),
+        open:null, high:0, low:Infinity, close:null, v0:0, v1:0
       };
-      if (c.open === null) c.open = p0;
-      c.high  = Math.max(c.high, p0);
-      c.low   = Math.min(c.low,  p0);
-      c.close = c.close === null ? p0 : c.close;       // first in DESC = close
-      c.vol0 += v0;
-      c.vol1 += v1;
-      candles.set(tMs, c);
+      if (c.open===null) c.open=p0;
+      c.high=Math.max(c.high,p0); c.low=Math.min(c.low,p0);
+      c.close = c.close===null ? p0 : c.close;
+      c.v0+=v0; c.v1+=v1;
+      map.set(k,c);
     };
 
     while (!done) {
-      const vars = { pair: pairId, since: sinceIso, first: CHUNK, offset };
-      const res  = await executeGraphQLQuery(qry, vars,
-                    "Upstream GraphQL error on candles query");
-      const edges = res?.data?.allEvents?.edges ?? [];
+      const vars = {
+        pair:pairId, since:sinceIso, until:untilIso,
+        first:CHUNK, offset
+      };
+      const r = await executeGraphQLQuery(gql, vars,
+                "Upstream GraphQL error on candles");
+      const edges = r?.data?.allEvents?.edges ?? [];
       if (!edges.length) break;
 
-      for (const { node: { created, data } } of edges) {
+      for (const { node:{ created, data } } of edges) {
         const ts  = Date.parse(created);
-        const key = Math.floor(ts / ivMs) * ivMs;
-
-        const p0 = calcPrice0(data);
-        if (p0 === null) continue;
-
-        const v0 = parseFloat(data.amount0In  || 0) + parseFloat(data.amount0Out || 0);
-        const v1 = parseFloat(data.amount1In  || 0) + parseFloat(data.amount1Out || 0);
-
-        add(key, p0, v0, v1);
+        const key = Math.floor(ts/ivMs)*ivMs;
+        const p0  = price0(data);
+        if (p0===null) continue;
+        const v0 = (+data.amount0In||0)+(+data.amount0Out||0);
+        const v1 = (+data.amount1In||0)+(+data.amount1Out||0);
+        ins(key,p0,v0,v1);
       }
-
       done = edges.length < CHUNK;
       offset += CHUNK;
     }
 
-    /* ── serialise map → ASC array ------------------------------ */
-    const arr = [...candles.values()]
-      .sort((a, b) => new Date(a.t) - new Date(b.t))
-      .map(c => ({
-        t: c.t,
-        open : token === "0" ? c.open            : 1 / c.open,
-        high : token === "0" ? c.high            : 1 / c.low,
-        low  : token === "0" ? c.low             : 1 / c.high,
-        close: token === "0" ? c.close           : 1 / c.close,
-        volume: token === "0" ? c.vol0           : c.vol1
+    /* ── serialise ---------------------------------------------- */
+    const candles = [...map.values()]
+      .sort((a,b)=>new Date(a.t)-new Date(b.t))
+      .map(c=>({
+        t:c.t,
+        open : token==="0"?c.open : 1/c.open,
+        high : token==="0"?c.high : 1/c.low,
+        low  : token==="0"?c.low  : 1/c.high,
+        close: token==="0"?c.close: 1/c.close,
+        volume: token==="0"?c.v0  : c.v1
       }));
 
-    return json({ pairId, token, interval: ivStr, candles: arr });
+    const page = {
+      after : candles.length ? candles[candles.length-1].t : null,
+      before: candles.length ? candles[0].t                : null,
+      hasNext: !!beforeMs    || (!beforeMs && since>0),
+      hasPrev: !!afterMs     || (until ? until<now : false)
+    };
+
+    return json({ pairId, token, interval:ivStr, candles, page });
 
   } catch (err) {
     if (err instanceof Response) return err;
