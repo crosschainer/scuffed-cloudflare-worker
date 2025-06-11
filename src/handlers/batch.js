@@ -1,34 +1,29 @@
-import { json }          from "../utils/response.js";
-import { CORS_HEADERS }  from "../middleware/cache.js";
+import router           from "../routes/router.js";   // default export with .fetch
+import { json }         from "../utils/response.js";
+import { CORS_HEADERS } from "../middleware/cache.js";
 
-const CONCURRENCY   = 5;   // sub-requests in parallel
-const EST_SUBREQ    = 3;   // worst-case fetch + cache.match + GraphQL
-const MAX_PATHS     = Math.floor(50 / EST_SUBREQ); // 16 safe per call
+const CONCURRENCY = 5;
+const MAX_PATHS   = 16;               // slice size per batch
 
-/* ── tiny promise-pool ─────────────────────────────────────────── */
+/* pool helper ---------------------------------------------------- */
 async function pool(items, fn, n = CONCURRENCY) {
   const it   = items[Symbol.iterator]();
   const out  = [];
-  const work = new Set();
-  const run  = () => {
+  const running = new Set();
+  const step = () => {
     const { value, done } = it.next();
     if (done) return;
     const p = Promise.resolve(fn(value))
-      .then(r => { work.delete(p); out.push(r); run(); })
-      .catch(e => { work.delete(p); out.push(e); run(); });
-    work.add(p);
+      .then(r => { running.delete(p); out.push(r); step(); })
+      .catch(e => { running.delete(p); out.push(e); step(); });
+    running.add(p);
   };
-  Array.from({ length: n }).forEach(run);
-  await Promise.all(work);
+  Array.from({ length: n }).forEach(step);
+  await Promise.all(running);
   return out;
 }
 
-/* parse JSON if possible, else text */
-const safeBody = async r =>
-  (r.headers.get("Content-Type") || "").includes("json")
-    ? await r.json().catch(() => null)
-    : await r.text().catch(() => null);
-
+/* --------------------------------------------------------------- */
 export async function batchHandler(req, env, ctx) {
   if (req.method !== "POST")
     return json({ error: "Use POST with JSON body" }, { status: 405, headers: CORS_HEADERS });
@@ -37,7 +32,7 @@ export async function batchHandler(req, env, ctx) {
   try { body = await req.json(); }
   catch { return json({ error: "Invalid JSON" }, { status: 400, headers: CORS_HEADERS }); }
 
-  const paths = Array.isArray(body.paths) ? body.paths : [];
+  const paths  = Array.isArray(body.paths) ? body.paths : [];
   if (!paths.length)
     return json({ error: "'paths' must be non-empty array" }, { status: 400, headers: CORS_HEADERS });
 
@@ -46,29 +41,30 @@ export async function batchHandler(req, env, ctx) {
   if (!slice.length)
     return json({ error: "offset out of range" }, { status: 400, headers: CORS_HEADERS });
 
-  /* fan-out ------------------------------------------------------ */
-  const origin = new URL(req.url).origin;
-  const init   = { headers: { Accept: "application/json" } };
+  /* ---- fan-out (internal) ------------------------------------- */
+  const makeReq = (p) => new Request(new URL(p, req.url).toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" }
+  });
 
   const results = await pool(slice, async p => {
-    const full = origin + p;
     try {
-      const resp   = await fetch(full, init);
-      const data   = await safeBody(resp);
-      const max    = +(resp.headers.get("Cache-Control")?.match(/max-age=(\d+)/)?.[1] || 0);
-      return { path: p, ok: resp.ok, status: resp.status, url: full, data, max };
+      const r    = await router.fetch(makeReq(p), env, ctx);
+      const data = await r.json().catch(() => null);
+      const max  = +(r.headers.get("Cache-Control")?.match(/max-age=(\d+)/)?.[1] || 0);
+      return { path: p, ok: r.ok, status: r.status, data, max };
     } catch (e) {
-      return { path: p, ok: false, status: 599, url: full, data: { error: e.message }, max: 0 };
+      return { path: p, ok: false, status: 599, data: { error: e.message }, max: 0 };
     }
   });
 
-  /* assemble ------------------------------------------------------ */
+  /* ---- assemble ---------------------------------------------- */
   const out  = {};
   let ttl    = Infinity;
   for (const r of results) {
     out[r.path] = r.ok
       ? r.data
-      : { error: "Sub-request failed", status: r.status, url: r.url, body: r.data };
+      : { error: "Sub-request failed", status: r.status, body: r.data };
     ttl = Math.min(ttl, r.max || Infinity);
   }
   if (!isFinite(ttl)) ttl = 5;
