@@ -23,6 +23,7 @@ import { transactionsHandler,
          getTransactionByHash,
          getTransactionsBySender }                   from "../handlers/transactions.js";
 import { getPairById }                               from "../handlers/getPairById.js";
+import { tokenDistributionHandler }                  from "../handlers/tokenDistribution.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
 const TTL_5S     = 5;                    // volatile
@@ -154,7 +155,14 @@ export async function handleRequest(event) {
       TTL_30_D
     );
   }
-
+  /* /tokens/<contract>/distribution */
+const mDist = path.match(/^\/tokens\/([^\/]+)\/distribution$/);
+if (mDist)
+  return withEdgeCache(
+    req, event,
+    () => tokenDistributionHandler(req, { contractName: mDist[1] }),
+    30 
+  );
   /* ── static routes ---------------------------------------------- */
   const entry = STATIC[path];
   if (!entry) return json({ error: "Route not found" }, { status: 404 });

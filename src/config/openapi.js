@@ -1088,6 +1088,54 @@ export const openapiSpec = {
         }
       }
     },
+    "/tokens/{contract}/distribution": {
+      get: {
+        tags: ["Tokens"],
+        summary: "Distribution buckets for a token (Edge cache: 30 seconds)",
+        parameters: [
+          { name:"contract", in:"path", required:true,
+            schema:{type:"string"}, example:"con_xian" }
+        ],
+        responses: {
+          "200": {
+            description: "Top-holder distribution",
+            content: {
+              "application/json": {
+                schema:{
+                  type:"object",
+                  properties:{
+                    contractName:{type:"string"},
+                    totalSupply :{type:"number",format:"float"},
+                    distribution:{
+                      type:"object",
+                      properties:{
+                        top1  :{ $ref:"#/components/schemas/DistBucket"},
+                        top10 :{ $ref:"#/components/schemas/DistBucket"},
+                        top25 :{ $ref:"#/components/schemas/DistBucket"},
+                        top100:{ $ref:"#/components/schemas/DistBucket"},
+                        others:{ $ref:"#/components/schemas/DistBucket"}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "DistBucket": {
+          type:"object",
+          properties:{
+            balance :{type:"number",format:"float",example:1_250_000},
+            percent :{type:"number",format:"float",example:12.5}
+          }
+        }
+      }
+    }
+    
 
   },
 };
