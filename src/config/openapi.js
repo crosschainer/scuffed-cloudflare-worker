@@ -1144,13 +1144,15 @@ export const openapiSpec = {
     tags: ["Batch"],
     summary: "Bundle multiple GET endpoints into one response",
     description:
-      "Send a list of **relative** paths (same as you would call individually)\n" +
-      "and get a JSON object keyed by those paths.  The Worker fetches each\n" +
-      "sub-request internally, so normal edge-cache rules still apply.\n\n" +
-      "**Limits**\n" +
-      "• max 20 paths per request\n" +
-      "• only endpoints documented in this spec are allowed\n" +
-      "• each sub-request counts toward Cloudflare’s 50-sub-request limit.",
+      "Send a JSON list of **relative** paths (exactly the same paths you would\n" +
+      "call individually) and receive a JSON object keyed by those paths.\n\n" +
+      "### Limits & paging\n" +
+      "• **16 paths per call** (to stay under Cloudflare’s 50-sub-request limit)\n" +
+      "• If you supply more than 16 paths, the response contains `_meta.nextOffset`.\n" +
+      "  Call `/batch` again with the same `paths` array **and** `offset=nextOffset`\n" +
+      "  to fetch the next slice.\n" +
+      "• Only endpoints documented in this spec are allowed.\n" +
+      "• Each sub-request still benefits from its normal edge-cache rules.",
     requestBody: {
       required: true,
       content: {
@@ -1160,22 +1162,42 @@ export const openapiSpec = {
             properties: {
               paths: {
                 type: "array",
-                maxItems: 20,
-                items:   { type: "string", example: "/total-supply" }
+                maxItems: 1000,                 // overall list size
+                items: { type: "string", example: "/total-supply" }
+              },
+              offset: {
+                type: "integer",
+                minimum: 0,
+                description: "Row offset returned as `_meta.nextOffset`" 
               }
             },
             required: ["paths"]
+          },
+          examples: {
+            basic: {
+              summary: "Fetch five endpoints at once",
+              value: {
+                paths: [
+                  "/total-supply",
+                  "/circulating-supply",
+                  "/pairs/1/volume24h",
+                  "/pairs/1/pricechange24h",
+                  "/tokens/con_xian/distribution"
+                ]
+              }
+            }
           }
         }
       }
     },
     responses: {
       "200": {
-        description: "Bundle with one entry per path plus `_meta.maxAge`",
+        description: "Bundle with one entry per path plus `_meta` info",
         content: {
           "application/json": {
             schema: {
               type: "object",
+              additionalProperties: true,
               properties: {
                 _meta: {
                   type: "object",
@@ -1184,25 +1206,27 @@ export const openapiSpec = {
                       type: "integer",
                       description: "Shortest Cache-Control max-age among all parts",
                       example: 5
+                    },
+                    nextOffset: {
+                      type: ["integer", "null"],
+                      description: "Present when more paths remain to be fetched",
+                      example: 16
                     }
                   }
                 }
-              },
-              additionalProperties: true
-              /* each dynamic property (e.g. '/total-supply') holds that
-                 endpoint’s normal 200-response schema */
+              }
             }
           }
         }
       },
       "400": {
-        description: "Bad request (missing body, >20 paths, etc.)",
+        description: "Bad request (invalid JSON, missing paths, offset out of range)",
         content: {
           "application/json": {
             schema: {
               type: "object",
               properties: {
-                error:   { type: "string", example: "Invalid JSON." }
+                error: { type: "string", example: "Body must contain non-empty 'paths' array" }
               }
             }
           }
@@ -1223,7 +1247,8 @@ export const openapiSpec = {
       }
     }
   }
-},"/pairs/{pairId}/candles": {
+},
+"/pairs/{pairId}/candles": {
   get: {
     tags: ["Pairs"],
     summary: "OHLCV candlesticks for a pair (Edge cache: 5 s)",
