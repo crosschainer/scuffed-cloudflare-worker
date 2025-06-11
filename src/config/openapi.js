@@ -11,8 +11,18 @@ export const openapiSpec = {
   info: {
     title: "General Xian API",
     version: "1.0.0",
-    description: "API endpoints for retrieving data from Xian. If data is missing, please get it through https://node.xian.org/graphiql instead. All endpoints here have 5 seconds cache.",
+    description: "API endpoints for retrieving data from Xian. If data is missing, please get it through https://node.xian.org/graphiql instead.",
   },
+  servers: [
+    {
+      url: "https://xian-api.poc.workers.dev",
+      description: "Mainnet"
+    },
+    {
+      url: "http://localhost:8787",
+      description: "Local development server"
+    }
+  ],
   tags: [
     {
   name: "Batch",
