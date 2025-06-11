@@ -70,7 +70,10 @@ export default {
 
     /* ── /batch (POST)  ------------------------------------------- */
     if (req.method === "POST" && path === "/batch")
-      return batchHandler(req, env, ctx);          // no edge cache on wrapper
+      return withEdgeCache(req, ctx,
+        () => batchHandler(req, env, ctx),
+        1
+      );
 
     /* Reject any non-GET after /batch is handled */
     if (req.method !== "GET")
