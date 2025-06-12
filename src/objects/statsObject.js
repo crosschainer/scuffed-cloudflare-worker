@@ -43,8 +43,8 @@ async function pool(list, fn, max = POOL_LIMIT) {
 // Factory for an empty orderings object – keeps code DRY
 // ──────────────────────────────────────────────────────────────────
 const emptyOrderings = () => ({
-  tokenPerXianAsc : [],
-  tokenPerXianDesc: [],
+  token0Pertoken1Asc : [],
+  token0Pertoken1Desc: [],
   liquidity       : [],
   volumeDesc      : []
 });
