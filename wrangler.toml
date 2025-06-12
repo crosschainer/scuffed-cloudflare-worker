@@ -1,19 +1,45 @@
-name = "xian-api"
-main = "src/index.js"
+name               = "xian-api"
+main               = "src/index.js"          # modules build
 compatibility_date = "2023-05-18"
-account_id = "9f5eccdd843ab1ee026067fab55893f0"
+account_id         = "9f5eccdd843ab1ee026067fab55893f0"
 
-[build]
-command = ""
+#########################
+# Durable Object binding
+#########################
+[[durable_objects.bindings]]
+name       = "STATS_OBJECT"      # env.STATS_OBJECT in code
+class_name = "StatsObject"       # export { StatsObject } in src/index.js
 
-# Production environment (current live API)
+#########################
+# Durable-Object migrations (one-off)
+#########################
+[[migrations]]
+tag         = "v1"               # bump only when you append another block
+new_classes = ["StatsObject"]    # must match class_name above
+
+
+#########################
+# KV (optional cold-start snapshot)
+#########################
+[[kv_namespaces]]
+binding = "PAIRS_STATS_KV"       # env.PAIRS_STATS_KV
+id      = "9de66568c7d445e5b98b55b7d436bf0a"   # ← replace with real KV ID
+
+#########################
+# Environment variables
+#########################
+[vars]
+GRAPHQL_URL = "https://node.xian.org/graphql"
+
+
+#########################
+# Production environment
+#########################
 [env.production]
-name = "xian-api"
 route = { pattern = "xian-api.poc.workers.dev", custom_domain = true }
 
-# wrangler.toml (wrangler v3.88.0^)
+#########################
+# Optional Wrangler logs
+#########################
 [observability.logs]
 enabled = true
-
-
-

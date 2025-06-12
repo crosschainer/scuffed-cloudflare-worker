@@ -1,14 +1,19 @@
 /**
- * Main entry point for the Cloudflare Worker
- * ------------------------------------------
- * The router module now exports a *default* object with a `.fetch()` method,
- * so we simply delegate to that instead of importing a named handleRequest.
+ * src/index.js  –  Worker entry (Modules syntax)
+ * ------------------------------------------------
+ * Exposes the StatsObject Durable Object and delegates requests to
+ * routes/router.js, passing along `env` and `ctx`.
  */
 
-import router from './routes/router.js';
+import router            from "./routes/router.js";
+import { StatsObject }   from "./objects/statsObject.js";
 
-addEventListener("fetch", (event) => {
-  // router.fetch(request, env?, ctx?) — in a Service-Worker build
-  // `env` is not injected, so pass undefined; the ExecutionContext is `event`.
-  event.respondWith(router.fetch(event.request, undefined, event));
-});
+/* ---- expose DO class to Wrangler ---- */
+export { StatsObject };
+
+export default {
+  async fetch(request, env, ctx) {
+    // router.fetch is the default export of routes/router.js
+    return router.fetch(request, env, ctx);
+  }
+};
