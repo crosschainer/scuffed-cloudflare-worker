@@ -1504,7 +1504,7 @@ export const openapiSpec = {
           in: "query",
           schema: {
             type: "string",
-            enum: ["volumeDesc", "tokenPerXianDesc", "tokenPerXianAsc", "liquidity"],
+            enum: ["volumeDesc", "token0Pertoken1Desc", "token0Pertoken1Asc", "liquidity"],
             default: "volumeDesc"
           }
         },

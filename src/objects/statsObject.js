@@ -175,7 +175,7 @@ export class StatsObject {
           pairId       : p.pair,
           token0       : p.token0,
           token1       : p.token1,
-          tokenPerXian : 0,
+          token0Pertoken1 : 0,
           priceUsd     : 0,
           volume24h    : 0,
           volume24hUsd : 0,
@@ -284,12 +284,12 @@ export class StatsObject {
 
       const g = await this._gql(statsQL, { pair: rec.pairId, since: sinceIso });
 
-      // last swap → tokenPerXian
+      // last swap → token0Pertoken1
       const lastEdge = g?.data?.last?.edges?.[0];
       if (lastEdge) {
         rec.lastSwapTs = +new Date(lastEdge.node.created);
         const tpx = tpxOf(lastEdge.node.data);
-        if (tpx != null) rec.tokenPerXian = tpx;
+        if (tpx != null) rec.token0Pertoken1 = tpx;
       }
 
       // 24h volume (token0) → USD
@@ -298,8 +298,8 @@ export class StatsObject {
         0);
 
       // derive USD conversions & liquidity
-      if (xianUsd > 0 && rec.tokenPerXian > 0) {
-        rec.priceUsd      = xianUsd / rec.tokenPerXian;
+      if (xianUsd > 0 && rec.token0Pertoken1 > 0) {
+        rec.priceUsd      = xianUsd / rec.token0Pertoken1;
         rec.volume24hUsd  = rec.volume24h * rec.priceUsd;
         if (rec.token0 == "con_usdc"){
           rec.liquidityUsd = rec.reserve0 * rec.priceUsd * 2;
@@ -316,8 +316,8 @@ export class StatsObject {
   /*──────────────────── index arrays for fast fetch() ───────────*/
   _reindex() {
     const list = [...this.recMap.values()];
-    this.orderings.tokenPerXianAsc  = [...list].sort((a,b) => a.tokenPerXian - b.tokenPerXian);
-    this.orderings.tokenPerXianDesc = [...list].sort((a,b) => b.tokenPerXian - a.tokenPerXian);
+    this.orderings.token0Pertoken1Asc  = [...list].sort((a,b) => a.token0Pertoken1 - b.token0Pertoken1);
+    this.orderings.token0Pertoken1Desc = [...list].sort((a,b) => b.token0Pertoken1 - a.token0Pertoken1);
     this.orderings.liquidity        = [...list].sort((a,b) => b.liquidityUsd - a.liquidityUsd);
     this.orderings.volumeDesc       = [...list].sort((a,b) => b.volume24hUsd - a.volume24hUsd);
   }
