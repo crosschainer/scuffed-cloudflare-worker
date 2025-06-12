@@ -1497,7 +1497,7 @@ export const openapiSpec = {
 "/pairs-stats": {
     get: {
       tags: ["Pairs"],
-      summary: "Price, 24 h volume, liquidity & token-per-XIAN ratio for every pair (IN TESTING)",
+      summary: "Price, 24 h volume, liquidity & token0-per-token1 ratio for every pair (IN TESTING)",
       parameters: [
         {
           name: "order",
