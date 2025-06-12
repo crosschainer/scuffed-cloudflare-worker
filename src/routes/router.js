@@ -193,18 +193,6 @@ if (mCandles) {
 }
 
 
-/* /pairs-stats  →  Durable Object */
-if (path === "/pairs-stats"){
-  // One global StatsObject instance, keyed by a fixed name (“stats”)
-  const id   = env.STATS_OBJECT.idFromName("stats");
-  const stub = env.STATS_OBJECT.get(id);
-  return withEdgeCache(
-    req, ctx,
-    () => stub.fetch(req),
-    TTL_5S                       // 5-second edge cache
-  );
-}
-
 /* /pairs/with/<tokenContract> */
 const mPairsTok = path.match(/^\/pairs\/with\/([^\/]+)$/);
 if (mPairsTok)
