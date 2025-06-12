@@ -15,7 +15,7 @@ class_name = "StatsObject"       # export { StatsObject } in src/index.js
 #########################
 [[migrations]]
 tag         = "v1"               # bump only when you append another block
-new_classes = ["StatsObject"]    # must match class_name above
+new_sqlite_classes = ["StatsObject"]    # must match class_name above
 
 
 #########################
