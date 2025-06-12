@@ -1494,52 +1494,7 @@ export const openapiSpec = {
     }
   }
 },
-"/pairs-stats": {
-    get: {
-      tags: ["Pairs"],
-      summary: "Price, 24 h volume, liquidity & token0-per-token1 ratio for every pair (IN TESTING)",
-      parameters: [
-        {
-          name: "order",
-          in: "query",
-          schema: {
-            type: "string",
-            enum: ["volumeDesc", "token0Pertoken1Desc", "token0Pertoken1Asc", "liquidity"],
-            default: "volumeDesc"
-          }
-        },
-        {
-          name: "limit",
-          in: "query",
-          schema: { type: "integer", minimum: 1, maximum: 100, default: 50 }
-        },
-        {
-          name: "offset",
-          in: "query",
-          schema: { type: "integer", minimum: 0, default: 0 }
-        }
-      ],
-      responses: {
-        "200": {
-          description: "Paginated pair stats",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  stats: {
-                    type: "array",
-                    items: { $ref: "#/components/schemas/PairStats" }
-                  },
-                  pagination: { $ref: "#/components/schemas/Pagination" }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    },
+
 
     "components": {
       "schemas": {
@@ -1550,32 +1505,7 @@ export const openapiSpec = {
             percent :{type:"number",format:"float",example:12.5}
           }
         },
-        "PairStats": {
-        type: "object",
-        properties: {
-          pairId:        { type: "string", example: "42" },
-          token0:        { type: "string", example: "con_usdc" },
-          token1:        { type: "string", example: "con_xian" },
-          tokenPerXian:  { type: "number", example: 430.21 },
-          priceUsd:      { type: "number", example: 0.00234 },
-          volume24h:     { type: "number", example: 123_456.78 },
-          volume24hUsd:  { type: "number", example: 289.47 },
-          reserve0:      { type: "number", example: 65_432.1 },
-          reserve1:      { type: "number", example: 98_765.4 },
-          liquidityUsd:  { type: "number", example: 150_000.0 }
-        }
-      },
-      "Pagination": {
-        type: "object",
-        properties: {
-          offset:   { type: "integer", example: 0 },
-          limit:    { type: "integer", example: 25 },
-          total:    { type: "integer", example: 100 },
-          next:     { type: ["integer", "null"], example: 25 },
-          previous: { type: ["integer", "null"], example: null },
-          order:    { type: "string", example: "volumeDesc" }
-        }
-      }
+       
     }
   },
 
