@@ -1441,6 +1441,60 @@ export const openapiSpec = {
     }
   }
 },
+"/pairs/with/{tokenContract}": {
+  get: {
+    tags: ["Pairs"],
+    summary: "List all pairs that include a given token (Edge cache: 10 minutes)",
+    parameters: [
+      { name:"tokenContract", in:"path", required:true,
+        schema:{ type:"string" }, example:"con_usdc",
+        description:"Contract name of the token to search for" },
+      { name:"limit",  in:"query", schema:{ type:"integer", min:1, max:50, default:10 } },
+      { name:"offset", in:"query", schema:{ type:"integer", min:0, default:0 } },
+      { name:"order",  in:"query",
+        schema:{ type:"string", enum:["asc","desc"], default:"desc" },
+        description:"Newest first (desc) or oldest first (asc)" }
+    ],
+    responses:{
+      "200":{
+        description:"Pairs containing the token",
+        content:{
+          "application/json":{
+            schema:{
+              type:"object",
+              properties:{
+                token:{ type:"string" },
+                pairs:{
+                  type:"array",
+                  items:{
+                    type:"object",
+                    properties:{
+                      pair:   { type:"string", example:"42" },
+                      token0: { type:"string", example:"con_usdc" },
+                      token1: { type:"string", example:"con_xian" },
+                      created:{ type:"string", format:"date-time" }
+                    }
+                  }
+                },
+                pagination:{
+                  type:"object",
+                  properties:{
+                    offset:{ type:"integer" }, limit:{ type:"integer" },
+                    total:{ type:"integer" },
+                    next:{ type:["integer","null"] },
+                    previous:{ type:["integer","null"] },
+                    order:{ type:"string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+},
+
 
     "components": {
       "schemas": {

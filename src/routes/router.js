@@ -27,6 +27,7 @@ import { tokenDistributionHandler }                  from "../handlers/tokenDist
 import { batchHandler }                              from "../handlers/batch.js";
 import { pairCandlesHandler }                         from "../handlers/pairCandles.js";
 import { pairTradesHandler }                          from "../handlers/pairTrades.js";
+import { pairsByTokenHandler }                        from "../handlers/pairsByToken.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
 const TTL_5S   = 5;
@@ -190,6 +191,16 @@ if (mCandles) {
     TTL_5S      // small cache; each candle query is heavy
   );
 }
+
+/* /pairs/with/<tokenContract> */
+const mPairsTok = path.match(/^\/pairs\/with\/([^\/]+)$/);
+if (mPairsTok)
+  return withEdgeCache(
+    req, ctx,
+    () => pairsByTokenHandler(req),
+    TTL_10M
+  );
+
 
     /* ── static GET routes --------------------------------------- */
     const entry = STATIC[path];
