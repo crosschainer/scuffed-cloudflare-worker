@@ -65,10 +65,15 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
 
     /* cache headers ------------------------------------------------ */
     const makeHeaders = (h = new Headers(bodyForUser.headers)) => {
-      const cc = `public, max-age=${ttl}, ` +
-                 `stale-while-revalidate=${ttl}, ` +
-                 `stale-if-error=${ttl}`;
-      h.set("Cache-Control", cc);
+      const makeHeaders = (h = new Headers(bodyForUser.headers)) => {
+      if (bodyForUser.status === 200) {
+        const cc = `public, max-age=${ttl}, ` +
+                   `stale-while-revalidate=${ttl}, ` +
+                   `stale-if-error=${ttl}`;
+        h.set("Cache-Control", cc);
+      } else {
+        h.set("Cache-Control", "no-store");
+      }
       for (const [k, v] of Object.entries(CORS_HEADERS)) if (!h.has(k)) h.set(k, v);
       return h;
     };
