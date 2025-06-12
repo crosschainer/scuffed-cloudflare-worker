@@ -64,7 +64,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
     const untilMs = beforeMs != null
       ? beforeMs
       : afterMs  != null
-        ? (afterMs + rangeMs)
+        ? afterMs + rangeMs
         : now;           // in pure range mode, use now as "until"
 
     // sanity check for too many buckets (only in pure range)
@@ -89,10 +89,10 @@ export async function pairCandlesHandler(request /*, ctx */) {
     /* ── GraphQL loop ------------------------------------------- */
     const gql = `
       query Swaps(
-        $pair: String!,
-        $since: Datetime!,
-        $until: Datetime!,
-        $first: Int!,
+        $pair:   String!,
+        $since:  Datetime!,
+        $until:  Datetime!,
+        $first:  Int!,
         $offset: Int!
       ) {
         allEvents(
@@ -141,22 +141,27 @@ export async function pairCandlesHandler(request /*, ctx */) {
         if (!rec) {
           rec = {
             t: new Date(bucket).toISOString(),
-            open: p0, high: p0, low: p0, close: p0,
-            v0:0, v1:0,
-            openT: ts, closeT: ts
+            open:   p0,
+            high:   p0,
+            low:    p0,
+            close:  p0,
+            v0:     0,
+            v1:     0,
+            openT:  ts,
+            closeT: ts
           };
         }
 
-        // OHLC
+        // high/low
         rec.high = Math.max(rec.high, p0);
         rec.low  = Math.min(rec.low,  p0);
 
-        // open = price at earliest ts
+        // true open
         if (ts < rec.openT) {
           rec.openT = ts;
           rec.open  = p0;
         }
-        // close = price at latest ts
+        // true close
         if (ts > rec.closeT) {
           rec.closeT = ts;
           rec.close  = p0;
@@ -173,7 +178,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
       offset += CHUNK;
     }
 
-    /* serialise into sorted array ------------------------------- */
+    /* ── serialize into sorted array --------------------------- */
     const candles = [...buckets.values()]
       .sort((a,b)=> new Date(a.t) - new Date(b.t))
       .map(c=>({
@@ -186,10 +191,10 @@ export async function pairCandlesHandler(request /*, ctx */) {
       }));
 
     const page = {
-      after : candles.at(-1)?.t ?? null,
-      before: candles[0]?.t      ?? null,
-      hasNext:  !!beforeQ  || (!beforeQ  && sinceMs > 0),
-      hasPrev:  !!afterQ   || ( untilMs < now )
+      after  : candles.at(-1)?.t ?? null,
+      before : candles[0]?.t      ?? null,
+      hasNext: !!beforeQ  || (!beforeQ  && sinceMs > 0),
+      hasPrev: !!afterQ   || ( untilMs < now )
     };
 
     return json({ pairId, token, interval: ivStr, candles, page });
