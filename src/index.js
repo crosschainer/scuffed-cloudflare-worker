@@ -9,7 +9,7 @@ import router            from "./routes/router.js";
 
 export default {
   async fetch(request, env, ctx) {
-    // router.fetch is the default export of routes/router.js
+    // router.fetch is the default export of routes/router.js 
     return router.fetch(request, env, ctx);
   }
 };
