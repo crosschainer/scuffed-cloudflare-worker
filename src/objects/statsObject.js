@@ -64,7 +64,7 @@ export class StatsObject {
     this.ready = this._loadSnapshot().catch(() => {});
 
     // first alarm ASAP
-    this.state.storage.setAlarm(Date.now());
+    //this.state.storage.setAlarm(Date.now());
   }
 
   /*──────────────── snapshot helpers ────────────────*/
