@@ -3,19 +3,6 @@ main               = "src/index.js"          # modules build
 compatibility_date = "2023-05-18"
 account_id         = "9f5eccdd843ab1ee026067fab55893f0"
 
-#########################
-# Durable Object binding
-#########################
-[[durable_objects.bindings]]
-name       = "STATS_OBJECT"      # env.STATS_OBJECT in code
-class_name = "StatsObject"       # export { StatsObject } in src/index.js
-
-#########################
-# Durable-Object migrations (one-off)
-#########################
-[[migrations]]
-tag         = "v1"               # bump only when you append another block
-new_sqlite_classes = ["StatsObject"]    # must match class_name above
 
 
 #########################
