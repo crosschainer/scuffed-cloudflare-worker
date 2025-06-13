@@ -4,14 +4,6 @@ compatibility_date = "2023-05-18"
 account_id         = "9f5eccdd843ab1ee026067fab55893f0"
 
 
-
-#########################
-# KV (optional cold-start snapshot)
-#########################
-[[kv_namespaces]]
-binding = "PAIRS_STATS_KV"       # env.PAIRS_STATS_KV
-id      = "9de66568c7d445e5b98b55b7d436bf0a"   # ← replace with real KV ID
-
 #########################
 # Environment variables
 #########################
