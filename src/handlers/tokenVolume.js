@@ -50,7 +50,19 @@ export async function pairVolume24hHandler(request, event) {
     );
 
     /* ── 2. worker-side aggregation ────────────────────────────── */
-    const events = data?.data?.allEvents?.edges ?? [];
+    const events = data?.data?.allEvents?.edges;
+    if (!Array.isArray(events)) {
+      return json({
+        error: "Malformed or missing data from upstream",
+        pairId,
+        token,
+        volume24h: null
+      }, { status: 502 });
+    }
+
+    if (events.length === 0) {
+      return json({ pairId, token, volume24h: 0 });
+    }
     let volume24h = 0;
 
     for (const { node: { data } } of events) {
