@@ -1324,6 +1324,122 @@ export const openapiSpec = {
     }
   }
 },
+"/pairs/{pairId}/candles": {
+  get: {
+    tags: ["Pairs"],
+    summary: "OHLCV candles for a pair (Edge cache: 5 seconds)",
+    description:
+      "Returns fixed-interval price/volume candles for the given pair. " +
+      "Specify **before** *or* **after** for cursor-based paging, or omit both " +
+      "to request a plain time-range (see **range**). " +
+      "At most 5 000 candles are returned per call.",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in: "query",
+        required: false,
+        schema: { type: "string", enum: ["0", "1"], default: "0" },
+        description: "Denomination (0 = token0 price / volume, 1 = token1)"
+      },
+      {
+        name: "interval",
+        in: "query",
+        required: false,
+        schema: {
+          type: "string",
+          pattern: "^[0-9]+[mhd]$",
+          default: "1h"
+        },
+        description: "Candle width: e.g. 5m, 2h, 7d (m = minutes, h = hours, d = days)"
+      },
+      {
+        name: "range",
+        in: "query",
+        required: false,
+        schema: {
+          type: "string",
+          pattern: "^[0-9]+[mhd]$",
+          default: "1d"
+        },
+        description: "Time span when **before/after** are omitted (same units as *interval*)"
+      },
+      {
+        name: "before",
+        in: "query",
+        required: false,
+        schema: {
+          oneOf: [
+            { type: "string", format: "date-time" },
+            { type: "integer", description: "Unix epoch ms" }
+          ]
+        },
+        description: "Return candles **ending** at (exclusive). May not be used with **after**."
+      },
+      {
+        name: "after",
+        in: "query",
+        required: false,
+        schema: {
+          oneOf: [
+            { type: "string", format: "date-time" },
+            { type: "integer", description: "Unix epoch ms" }
+          ]
+        },
+        description: "Return candles **starting** at (inclusive). May not be used with **before**."
+      }
+    ],
+    responses: {
+      "200": {
+        description: "List of candles with paging cursors",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId:  { type: "string" },
+                token:   { type: "string", example: "0" },
+                interval:{ type: "string", example: "1h" },
+                candles: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      t:      { type: "string", format: "date-time" },
+                      open:   { type: "number", format: "float" },
+                      high:   { type: "number", format: "float" },
+                      low:    { type: "number", format: "float" },
+                      close:  { type: "number", format: "float" },
+                      volume: { type: "number", format: "float" }
+                    }
+                  }
+                },
+                page: {
+                  type: "object",
+                  properties: {
+                    after:   { type: ["string", "null"], format: "date-time" },
+                    before:  { type: ["string", "null"], format: "date-time" },
+                    hasNext: { type: "boolean" },
+                    hasPrev: { type: "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "400": { description: "Bad request (validation error, too many candles, etc.)" },
+      "500": { description: "Server error" }
+    }
+  }
+},
+
 "/pairs/with/{tokenContract}": {
   get: {
     tags: ["Pairs"],
