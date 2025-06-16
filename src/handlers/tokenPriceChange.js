@@ -61,12 +61,25 @@ export async function pairPriceChange24hHandler(request, event) {
     const latestData = gql?.data?.latest?.edges?.[0]?.node?.data ?? {};
     let   oldestData = gql?.data?.oldest?.edges?.[0]?.node?.data;
 
-    if (!oldestData) oldestData = latestData;
-
-    if (!latestData) {
-   return json({ pairId, token, priceNow:null, price24hAgo:null,
-                 changePct:null, error:"No data" }, { status:204 });
- }
+    if (!oldestData) {
+  const prevGql = await executeGraphQLQuery(`
+    query Prev($pair:String!,$since:Datetime!){
+      prev: allEvents(
+        first: 1
+        orderBy: CREATED_DESC          # newest first
+        condition:{ contract:"con_pairs", event:"Swap" }
+        filter:{
+          dataIndexed:{contains:{pair:$pair}}
+          created:{ lessThan: $since } # ⇐ strictly before the window
+        }
+      ){ edges { node { data } } }
+    }`,
+    { pair: pairId, since },
+    "GraphQL price prev"
+  );
+  oldestData = prevGql?.data?.prev?.edges?.[0]?.node?.data;
+  if (!oldestData) oldestData = latestData;   // still nothing → 0 %
+}
 
 
     let priceNow    = calcPrice0(latestData);
