@@ -59,18 +59,14 @@ export async function pairPriceChange24hHandler(request, event) {
     };
 
     const latestData = gql?.data?.latest?.edges?.[0]?.node?.data ?? {};
-    const oldestData = gql?.data?.oldest?.edges?.[0]?.node?.data ?? {};
+    let   oldestData = gql?.data?.oldest?.edges?.[0]?.node?.data;
 
-    if (!latestData || !oldestData) {
-      return json({
-        pairId,
-        token,
-        priceNow: null,
-        price24hAgo: null,
-        changePct: null,
-        error: "Not enough data"
-      }, { status: 204 }); // or 200 if client expects it
-    }
+    if (!oldestData) oldestData = latestData;
+
+    if (!latestData) {
+   return json({ pairId, token, priceNow:null, price24hAgo:null,
+                 changePct:null, error:"No data" }, { status:204 });
+ }
 
 
     let priceNow    = calcPrice0(latestData);
