@@ -85,8 +85,9 @@ export async function pairTradesHandler(request /*, ctx */) {
       const side   = token === "0" ? side0 : side0 === "buy" ? "sell" : "buy";
       const price  = token === "0" ? p0    : 1 / p0;
       const amount = token === "0" ? (a0in || a0out) : (a1in || a1out);
+      const amount1 = token === "0" ? (a1in || a1out) : (a0in || a0out);
 
-      return { created: ts, side, amount, price };
+      return { created: ts, side, amount, amount1, price, token };
     }).filter(Boolean);
 
     const hasMore = offset + limit < total;
