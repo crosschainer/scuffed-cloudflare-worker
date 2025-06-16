@@ -77,8 +77,12 @@ export async function pairPriceChange24hHandler(request, event) {
     { pair: pairId, since },
     "GraphQL price prev"
   );
-  oldestData = prevGql?.data?.prev?.edges?.[0]?.node?.data;
-  if (!oldestData) oldestData = latestData;   // still nothing → 0 %
+  oldestData = prevGql?.data?.prev?.edges?.[0]?.node?.data ?? null;
+}
+
+if (!latestData || !oldestData) {
+  return json({ pairId, token, priceNow:null, price24hAgo:null,
+                changePct:null, error:"Not enough data" }, { status:200 });
 }
 
 
