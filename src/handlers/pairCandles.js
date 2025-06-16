@@ -64,9 +64,8 @@ export async function pairCandlesHandler(request /*, ctx */) {
     const untilMs = beforeMs != null
       ? beforeMs
       : afterMs != null
-        ? afterMs + rangeMs
-        : now;
-
+        ? Math.min(afterMs + rangeMs, now)
+       : now;
     // sanity check on pure-range
     if (beforeMs == null && afterMs == null) {
       const buckets = Math.ceil(rangeMs / ivMs);
@@ -207,7 +206,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
     const page = {
       after: candles.at(-1)?.t ?? null,
       before: candles[0]?.t ?? null,
-      hasNext: !!beforeQ || (!beforeQ && sinceMs > 0),
+      hasNext: !!beforeQ || (!beforeQ && sinceMs > 0 && untilMs < now),
       hasPrev: !!afterQ || (untilMs < now)
     };
 
