@@ -15,33 +15,25 @@ export async function pairPriceChange24hHandler(request, event) {
                   { status: 400 });
 
     /* ── 1. GraphQL query (one round-trip) ─────────────────── */
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1_000)
-                   .toISOString()
-                   .replace("Z", "");
+    const since = new Date(Date.now() - 86_400_000).toISOString();   // keep “Z”
 
     const priceQuery = `
-      query PriceChangeLast24h($pair: String!, $since: Datetime!) {
-        latest: allEvents(
-          first: 1
-          orderBy: CREATED_DESC
-          condition: { contract: "con_pairs", event: "Swap" }
-          filter: { dataIndexed: { contains: { pair: $pair } } }
-        ) {
-          edges { node { data } }
-        }
+      query PriceChangeLast24h($pair:String!,$since:Datetime!){
+    latest: allEvents(
+      first:1 orderBy:CREATED_DESC
+      condition:{contract:"con_pairs",event:"Swap"}
+      filter:{dataIndexed:{contains:{pair:$pair}}}
+    ){ edges{node{data created}} }
 
-        oldest: allEvents(
-          first: 1
-          orderBy: CREATED_ASC
-          condition: { contract: "con_pairs", event: "Swap" }
-          filter: {
-            dataIndexed: { contains: { pair: $pair } }
-            created: { greaterThan: $since }
-          }
-        ) {
-          edges { node { data } }
-        }
+    baseline: allEvents(                       # ⟵ renamed
+      first:1 orderBy:CREATED_DESC
+      condition:{contract:"con_pairs",event:"Swap"}
+      filter:{
+        dataIndexed:{contains:{pair:$pair}}
+        created:{lessThanOrEqualTo:$since}     # ⟵ OUTside window
       }
+    ){ edges{node{data created}} }
+  }
     `;
 
     const gql = await executeGraphQLQuery(
@@ -58,36 +50,18 @@ export async function pairPriceChange24hHandler(request, event) {
       return 0;
     };
 
-    const latestData = gql?.data?.latest?.edges?.[0]?.node?.data ?? {};
-    let   oldestData = gql?.data?.oldest?.edges?.[0]?.node?.data;
+    const latestData   = gql?.data?.latest?.edges?.[0]?.node?.data;
+const baselineData = gql?.data?.baseline?.edges?.[0]?.node?.data;
 
-    if (!oldestData) {
-  const prevGql = await executeGraphQLQuery(`
-    query Prev($pair:String!,$since:Datetime!){
-      prev: allEvents(
-        first: 1
-        orderBy: CREATED_DESC          # newest first
-        condition:{ contract:"con_pairs", event:"Swap" }
-        filter:{
-          dataIndexed:{contains:{pair:$pair}}
-          created:{ lessThan: $since } # ⇐ strictly before the window
-        }
-      ){ edges { node { data } } }
-    }`,
-    { pair: pairId, since },
-    "GraphQL price prev"
-  );
-  oldestData = prevGql?.data?.prev?.edges?.[0]?.node?.data ?? null;
-}
-
-if (!latestData || !oldestData) {
+if (!latestData || !baselineData) {
   return json({ pairId, token, priceNow:null, price24hAgo:null,
                 changePct:null, error:"Not enough data" }, { status:200 });
 }
+    
 
 
     let priceNow    = calcPrice0(latestData);
-    let price24hAgo = calcPrice0(oldestData);
+    let price24hAgo = calcPrice0(baselineData);
 
     if (token === "1") {
       priceNow    = priceNow    ? 1 / priceNow    : 0;
