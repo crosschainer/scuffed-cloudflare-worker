@@ -68,9 +68,8 @@ export async function getPairs(request) {
         /* price change (token-0 side) */
         const p0 = price0(data);
         if (p0 !== null) {
-          rec.close ??= p0;              // first seen (latest) = close
-          rec._lastCreated ??= created;
-          rec.open  = p0;                // will end up being the oldest
+          if (rec.close === undefined) rec.close = p0;  // newest ⇒ close
+          rec.open = p0;   
         }
         stats.set(pair, rec);
       }
@@ -98,11 +97,17 @@ export async function getPairs(request) {
       const s  = stats.get(m.pair) || {};
       const vol0 = s.v0 || 0;
       const vol1 = s.v1 || 0;
-      const priceNow    = s.close ?? null;
-      const price24hAgo = s.open  ?? null;
-      const changePct   = (price24hAgo && priceNow)
-                        ? (priceNow - price24hAgo) / price24hAgo * 100
-                        : null;
+      /* we show price denominated in token-1 ( “USD side” ) just like
+        /pricechange24h?token=1 →  invert token-0 price ----------------- */
+      const pNow0 = s.close;
+      const pOld0 = s.open;
+
+      const pNow1 = pNow0 ? 1 / pNow0 : null;   // token-1 perspective
+      const pOld1 = pOld0 ? 1 / pOld0 : null;
+
+      const changePct = (pNow1 && pOld1)
+                      ? ((pNow1 - pOld1) / pOld1) * 100
+                      : null;
       return {
         pair   : m.pair,
         token0 : m.token0,
