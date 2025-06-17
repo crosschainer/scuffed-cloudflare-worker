@@ -7,6 +7,7 @@ import { json } from "../utils/response.js";
 /* safety knobs --------------------------------------------------- */
 const CHUNK = 1_000;   // GraphQL page size
 const MAX_CANDLES = 5_000;   // hard ceiling per response
+const TOLERANCE = 1e-12;     // price continuity tolerance
 
 /* "5m" | "2h" | "7d" → ms ---------------------------------------- */
 function intervalMs(str = "1h") {
@@ -168,40 +169,56 @@ export async function pairCandlesHandler(request /*, ctx */) {
     const end = Math.floor((untilMs - 1) / ivMs) * ivMs;
 
     for (let b = start; b <= end; b += ivMs) {
-  const rec = raw.get(b);
+      const rec = raw.get(b);
 
-  if (rec) {
-    const open  = lastClose ?? (token === "0" ? rec.open : 1 / rec.open);
-    const close = token === "0" ? rec.close : 1 / rec.close;
+      if (rec) {
+        // price in current bucket, adjusted for token perspective
+        const recOpen = token === "0" ? rec.open : 1 / rec.open;
 
-    candles.push({
-      t: rec.t,
-      open,
-      high: token === "0" ? rec.high : 1 / rec.low,
-      low:  token === "0" ? rec.low  : 1 / rec.high,
-      close,
-      volume: token === "0" ? rec.v0 : rec.v1
-    });
+        // ── continuity check ────────────────────────────────
+        if (lastClose != null && Math.abs(recOpen - lastClose) > TOLERANCE) {
+          // Insert a synthetic candle that bridges the gap between lastClose and recOpen
+          // Use a timestamp 1 ms before the current bucket so ordering stays intact
+          candles.push({
+            t: new Date(b - 1).toISOString(), // just before current bucket start
+            open: lastClose,
+            high: Math.max(lastClose, recOpen),
+            low: Math.min(lastClose, recOpen),
+            close: recOpen,
+            volume: 0,
+            fake: true
+          });
+          // After the fake candle, continuity is restored
+          lastClose = recOpen;
+        }
 
-    lastClose = close;
+        const open  = lastClose ?? recOpen; // after possible synthetic insertion
+        const close = token === "0" ? rec.close : 1 / rec.close;
 
-    if (Math.abs(open - lastClose) > 1e-12) {
-      console.warn(`Continuity broken at ${rec.t}: expected ${lastClose}, got ${open}`);
+        candles.push({
+          t: rec.t,
+          open,
+          high: token === "0" ? rec.high : 1 / rec.low,
+          low:  token === "0" ? rec.low  : 1 / rec.high,
+          close,
+          volume: token === "0" ? rec.v0 : rec.v1
+        });
+
+        lastClose = close;
+
+      } else if (lastClose != null) {
+        // bucket with no trades – flat candle to keep the chart continuous
+        candles.push({
+          t: new Date(b).toISOString(),
+          open: lastClose,
+          high: lastClose,
+          low: lastClose,
+          close: lastClose,
+          volume: 0
+        });
+        // lastClose remains unchanged
+      }
     }
-
-  } else if (lastClose != null) {
-    candles.push({
-      t: new Date(b).toISOString(),
-      open: lastClose,
-      high: lastClose,
-      low: lastClose,
-      close: lastClose,
-      volume: 0
-    });
-    // lastClose stays the same
-  }
-}
-
 
     const page = {
       after: candles.at(-1)?.t ?? null,
