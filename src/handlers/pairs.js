@@ -1,83 +1,138 @@
-/**
- * Handler for GET /pairs?offset=<n>&limit=<m>&order=<asc|desc>
- *
- * • Pull PairCreated events (contract = "con_pairs", event = "PairCreated").
- * • Order by CREATED_  ↔  oldest / newest.  (Pair ids are assigned in
- *   creation order, so this is effectively pair-id ASC / DESC.)
- * • Slice + return   { pair, token0, token1 }[]   with classic pagination.
- */
-
+/* ------------------------------------------------------------------ */
+/*  handlers/getPairs.js                                              */
+/* ------------------------------------------------------------------ */
 import { executeGraphQLQuery } from "../utils/graphql.js";
 import { json }                from "../utils/response.js";
 
-export async function getPairs(request /*, event */) {
+const CHUNK = 1_000;                     // GraphQL page size
+const WINDOW_MS = 86_400_000;            // 24 h
+const NOW = () => Date.now();
+
+/* helper – price of token0 in token1 units ------------------------- */
+const price0 = d => {
+  const { amount0In, amount0Out, amount1In, amount1Out } = d;
+  return amount0In > 0 && amount1Out > 0 ? amount0In / amount1Out
+       : amount1In > 0 && amount0Out > 0 ? amount0Out / amount1In
+       : null;
+};
+
+/* ------------------------------------------------------------------ */
+/*  GET  /pairs?offset=X&limit=Y                                      */
+/*         (always ordered by volume24h-DESC)                         */
+/* ------------------------------------------------------------------ */
+export async function getPairs(request) {
   try {
-    /* ── 0.  query params ───────────────────────────────────── */
+    /* ── 0.  pagination params ─────────────────────────────────── */
     const url    = new URL(request.url);
     const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10));
-    const limit  = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") || "10", 10)), 50);
-    const order  = (url.searchParams.get("order") || "asc").toLowerCase();
+    const limit  = Math.min(Math.max(1, parseInt(url.searchParams.get("limit")  || "25",10)), 100);
 
-    if (order !== "asc" && order !== "desc")
-      return json({ error: 'Invalid "order" – use "asc" or "desc"' }, { status: 400 });
+    /* ── 1.  query **all** swaps in the last 24 h ───────────────── */
+    const sinceIso = new Date(NOW() - WINDOW_MS).toISOString();   // keep Z → UTC
 
-    const orderBy = order === "asc" ? "CREATED_ASC" : "CREATED_DESC";
-    const fetchLimit = limit + 1;                 // one extra row to test “hasMore”
-
-    /* ── 1.  GraphQL query ──────────────────────────────────── */
-    const gqlQuery = `
-      query Pairs($first: Int!, $offset: Int!) {
+    const gql = `
+      query Swaps24h($since:Datetime!,$first:Int!,$offset:Int!){
         allEvents(
-          condition: { contract: "con_pairs", event: "PairCreated" }
-          orderBy:   ${orderBy}
-          first:     $first
-          offset:    $offset
-        ) {
-          totalCount
-          edges {
-            node {
-              data
-              dataIndexed   # token0 / token1 live here
-            }
-          }
+          condition:{contract:"con_pairs", event:"Swap"}
+          filter:{created:{greaterThan:$since}}
+          orderBy:CREATED_DESC
+          first:$first
+          offset:$offset
+        ){ edges{node{ data dataIndexed created }} }
+      }`;
+
+    const stats = new Map();    // pair → { v0,v1, open?, close? }
+    let pageOffset = 0, done = false;
+
+    while (!done) {
+      const res = await executeGraphQLQuery(
+        gql,
+        { since: sinceIso, first: CHUNK, offset: pageOffset },
+        "GraphQL error on /pairs aggregation"
+      );
+
+      const edges = res?.data?.allEvents?.edges ?? [];
+      if (!edges.length) break;
+
+      for (const { node } of edges) {
+        const { data, dataIndexed, created } = node;
+        const pair = dataIndexed?.pair;
+        if (!pair) continue;
+
+        const rec = stats.get(pair) || { v0:0, v1:0, open:undefined, close:undefined };
+
+        /* volume aggregation */
+        rec.v0 += (+data.amount0In  || 0) + (+data.amount0Out || 0);
+        rec.v1 += (+data.amount1In  || 0) + (+data.amount1Out || 0);
+
+        /* price change (token-0 side) */
+        const p0 = price0(data);
+        if (p0 !== null) {
+          rec.close ??= p0;              // first seen (latest) = close
+          rec._lastCreated ??= created;
+          rec.open  = p0;                // will end up being the oldest
         }
+        stats.set(pair, rec);
       }
-    `;
 
-    const res = await executeGraphQLQuery(
-      gqlQuery,
-      { first: fetchLimit, offset },
-      "Upstream GraphQL error on /pairs query"
-    );
+      done        = edges.length < CHUNK;
+      pageOffset += CHUNK;
+    }
 
-    const edges       = res?.data?.allEvents?.edges       ?? [];
-    const totalCount  = res?.data?.allEvents?.totalCount  ?? 0;
-    const hasMore     = edges.length > limit;
-    const slice       = edges.slice(0, limit);
-
-    /* ── 2.  shape response ─────────────────────────────────── */
-    const pairs = slice.map(({ node }) => ({
-      pair:   node?.data?.pair ?? null,
-      token0: node?.dataIndexed?.token0 ?? null,
-      token1: node?.dataIndexed?.token1 ?? null
+    /* ── 2.  fetch *static* pair metadata (once) ───────────────── */
+    const metaGql = `
+      query PairsMeta {
+        allEvents(
+          condition:{contract:"con_pairs",event:"PairCreated"}
+        ){ edges{ node{ dataIndexed data } } }
+      }`;
+    const metaRes = await executeGraphQLQuery(metaGql);
+    const pairsMeta = (metaRes?.data?.allEvents?.edges ?? []).map(e => ({
+      pair   : e.node.data.pair,
+      token0 : e.node.dataIndexed.token0,
+      token1 : e.node.dataIndexed.token1
     }));
 
+    /* ── 3.  enrich with stats & compute pricePct24h ───────────── */
+    const enriched = pairsMeta.map(m => {
+      const s  = stats.get(m.pair) || {};
+      const vol0 = s.v0 || 0;
+      const vol1 = s.v1 || 0;
+      const priceNow    = s.close ?? null;
+      const price24hAgo = s.open  ?? null;
+      const changePct   = (price24hAgo && priceNow)
+                        ? (priceNow - price24hAgo) / price24hAgo * 100
+                        : null;
+      return {
+        pair   : m.pair,
+        token0 : m.token0,
+        token1 : m.token1,
+        volume24h : vol1,          // 👈  use token-1 side (= “USD”)
+        pricePct24h : changePct
+      };
+    });
+
+    /* ── 4.  rank by volume24h-DESC, slice page ───────────────── */
+    enriched.sort((a,b) => b.volume24h - a.volume24h);
+
+    const page  = enriched.slice(offset, offset + limit);
+    const hasNext  = offset + limit < enriched.length;
+    const hasPrev  = offset > 0;
+
+    /* ── 5.  respond ──────────────────────────────────────────── */
     return json({
-      pairs,
-      pagination: {
+      pairs : page,
+      pagination : {
         offset,
         limit,
-        total: totalCount,
-        next:     hasMore           ? offset + limit : null,
-        previous: offset > 0        ? Math.max(0, offset - limit) : null,
-        order
+        total   : enriched.length,
+        next    : hasNext ? offset + limit       : null,
+        previous: hasPrev ? Math.max(0, offset - limit) : null
       }
     });
+
   } catch (err) {
-    if (err instanceof Response) return err;       // propagate wrapped error
-    return json(
-      { error: "Failed to fetch pairs", message: err.message },
-      { status: 500 }
-    );
+    if (err instanceof Response) return err;
+    return json({ error:"Internal error", message:err.message }, { status:500 });
   }
 }
