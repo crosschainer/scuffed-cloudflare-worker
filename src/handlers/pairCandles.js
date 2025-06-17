@@ -98,7 +98,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
           condition:{contract:"con_pairs",event:"Swap"}
           filter:{
             dataIndexed:{contains:{pair:$pair}}
-            created:{greaterThanOrEqualTo:$since, lessThanOrEqualTo:$until}
+            created:{greaterThanOrEqualTo:$since, lessThan:$until}
           }
           orderBy: CREATED_DESC
           first:$first
@@ -222,7 +222,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
 
     const page = {
       after: candles.at(-1)?.t ?? null,
-      before: candles[0]?.t ? new Date(Date.parse(candles[0].t) + 1).toISOString() : null,
+      before: candles[0]?.t ?? null,         // include the bucket itself
       hasNext: !!beforeQ || (!beforeQ && sinceMs > 0 && untilMs < now),
       hasPrev: !!afterQ || (untilMs < now)
     };
