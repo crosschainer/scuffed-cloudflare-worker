@@ -166,7 +166,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
     let lastClose = null;
     // start at the first full bucket ≥ sinceMs
     const start = Math.ceil(sinceMs / ivMs) * ivMs;
-    const end = Math.floor(untilMs / ivMs) * ivMs;
+    const end = Math.floor((untilMs - 1) / ivMs) * ivMs;
 
     for (let b = start; b <= end; b += ivMs) {
       const rec = raw.get(b);
