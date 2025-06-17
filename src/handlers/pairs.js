@@ -93,26 +93,40 @@ export async function getPairs(request) {
     }));
 
     /* ── 3.  enrich with stats & compute pricePct24h ───────────── */
-    const enriched = pairsMeta.map(m => {
-      const s  = stats.get(m.pair) || {};
+    const enriched = pairsMeta.map(meta => {
+      /* ------------ normalise “USDC / currency” -------------- */
+      let { token0, token1 } = meta;
+      let invert = false;                         // will we invert price?
+
+      if (token0 === "con_usdc" && token1 === "currency") {
+        [token0, token1] = [token1, token0];      // currency / USDC
+        invert = true;                            // p₀ must be flipped
+      }
+
+      const s   = stats.get(meta.pair) || {};
       const vol0 = s.v0 || 0;
       const vol1 = s.v1 || 0;
-      /* we show price denominated in token-1 ( “USD side” ) just like
-        /pricechange24h?token=1 →  invert token-0 price ----------------- */
+
+      /* ------ pick the “USD-side” consistently ---------------- */
+      const volumeUSD = token1 === "con_usdc" ? vol1
+                       : token0 === "con_usdc" ? vol0
+                       : vol1;                   // fallback
+
+      /* ------ price change (always token-1 perspective) ------- */
       const pNow0 = s.close;
       const pOld0 = s.open;
 
-      const pNow1 = pNow0 ? 1 / pNow0 : null;   // token-1 perspective
-      const pOld1 = pOld0 ? 1 / pOld0 : null;
+      let pNowUSD = pNow0 && (invert ? 1 / pNow0 : pNow0);
+      let pOldUSD = pOld0 && (invert ? 1 / pOld0 : pOld0);
 
-      const changePct = (pNow1 && pOld1)
-                      ? ((pNow1 - pOld1) / pOld1) * 100
-                      : null;
+      const changePct =
+        (pNowUSD && pOldUSD) ? ((pNowUSD - pOldUSD) / pOldUSD) * 100 : null;
+
       return {
-        pair   : m.pair,
-        token0 : m.token0,
-        token1 : m.token1,
-        volume24h : vol1,          // 👈  use token-1 side (= “USD”)
+        pair        : meta.pair,
+        token0,
+        token1,
+        volume24h   : volumeUSD,
         pricePct24h : changePct
       };
     });
