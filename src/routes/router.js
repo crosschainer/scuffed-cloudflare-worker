@@ -86,7 +86,8 @@ export default {
     const mBal = path.match(/^\/token\/([^\/]+)\/balance\/([^\/]+)$/);
     if (mBal)
       return withEdgeCache(req, ctx,
-        () => getTokenBalance(req, { contractName: mBal[1], address: mBal[2] })
+        () => getTokenBalance(req, { contractName: mBal[1], address: mBal[2] }),
+        0 /* no cache for balances */
       );
 
     /* /tokens/<contract>/holders */

@@ -1,86 +1,105 @@
-/**
- * Get the balance of a specific address for a given token contract
- *
- * Route shape (example):
- *   GET /balance/:contractName/:address
- *
- *   • contractName → on-chain contract that holds the balances mapping, e.g. `con_usdc`
- *   • address      → any valid Lamden address (64-char hex or a named key like `currency`)
- *
- * Response:
- *   {
- *     "contractName": "con_usdc",
- *     "address": "79ce1de9c6…",
- *     "balance": 12345.6789          // 0   if address not found
- *   }
- */
-
+/* ------------------------------------------------------------------ */
+/*  handlers/getTokenBalance.js                                       */
+/* ------------------------------------------------------------------ */
 import { json } from "../utils/response.js";
 import { executeGraphQLQuery } from "../utils/graphql.js";
 
+/* RPC node that understands the simulate-tx endpoint */
+const RPC = "https://node.xian.org";
+
+/* small helpers ---------------------------------------------------- */
+const toHex = bytes =>
+  [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+
+const b64  = str => typeof atob === "function" ? atob(str) : Buffer.from(str, "base64").toString("binary");
+
+/* ------------------------------------------------------------------ */
 /**
- * Get token balance for (contractName, address)
- * @param {Request} request      – incoming request (unused, but kept for symmetry)
- * @param {{ contractName:string, address:string }} params – extracted by the router
+ * GET /balance/:contractName/:address
  */
-export async function getTokenBalance(request, { contractName, address }) {
+export async function getTokenBalance(_request, { contractName, address }) {
   try {
-    /* ------------------------------------------------------------ */
-    /* 1) Basic validation / sanitisation                            */
-    /* ------------------------------------------------------------ */
-    if (!contractName || !address) {
-      return json(
-        { error: "Bad request", message: "contractName and address are required." },
-        { status: 400 }
-      );
-    }
+    /* 1 — basic validation ------------------------------------------- */
+    if (!contractName || !address)
+      return json({ error: "contractName and address required" }, { status: 400 });
 
-    // Prevent accidental key-injection: strip any embedded colon
-    if (contractName.includes(":") || address.includes(":")) {
-      return json(
-        { error: "Bad request", message: "Illegal ':' in contractName or address." },
-        { status: 400 }
-      );
-    }
+    if (contractName.includes(":") || address.includes(":"))
+      return json({ error: "Illegal ':' in parameters" }, { status: 400 });
 
-    /* ------------------------------------------------------------ */
-    /* 2) Build the state-key and GraphQL query                      */
-    /* ------------------------------------------------------------ */
-    // State keys look like:    "<contract>.balances:<address>"
-    const stateKey = `${contractName}.balances:${address}`;
+    /* 2 — try balance_of via simulate_tx ----------------------------- */
+    let balance = await tryBalanceOf(contractName, address);
 
-    const query = `
-      query Balance {
-        allStates(
-          filter: { key: { equalTo: "${stateKey}" } }
-          first: 1
-        ) {
-          edges { node { value } }
-        }
-      }
-    `;
+    /* 3 — fallback to state key if simulate failed ------------------- */
+    if (balance === null) balance = await fallbackStateKey(contractName, address);
 
-    /* ------------------------------------------------------------ */
-    /* 3) Execute query                                              */
-    /* ------------------------------------------------------------ */
-    const gql = await executeGraphQLQuery(query);
-    const edge = gql?.data?.allStates?.edges?.[0];
-    const balanceRaw = edge ? edge.node.value : null;
-
-    /* ------------------------------------------------------------ */
-    /* 4) Normalise result                                           */
-    /* ------------------------------------------------------------ */
-    const balance = balanceRaw !== null ? parseFloat(balanceRaw) : 0;
-
-    return json({ contractName, address, balance }, { status: 200 });
+    /* 4 — normalise & return ---------------------------------------- */
+    return json(
+      { contractName, address, balance: balance ?? 0 },
+      { status: 200 }
+    );
   } catch (err) {
-    /* ------------------------------------------------------------ */
-    /* 5) Error handling                                             */
-    /* ------------------------------------------------------------ */
     console.error("getTokenBalance error:", err);
     return json(
       { error: "Failed to fetch balance", message: err.message },
       { status: 500 }
     );
+  }
+}
+
+/* ================================================================== */
+/*  ────── helpers ──────────────────────────────────────────────────  */
+/* ================================================================== */
+
+/**
+ * Call contract.balance_of(address) through /simulate_tx.
+ * Returns a JS number, or null if the call is unsupported / empty.
+ */
+async function tryBalanceOf(contract, addr) {
+  try {
+    const payload = {
+      sender:   addr,            // any valid sender works for simulate
+      contract,
+      function: "balance_of",
+      kwargs:   { address: addr }
+    };
+
+    const hex = toHex(new TextEncoder().encode(JSON.stringify(payload)));
+    const url = `${RPC}/abci_query?path="/simulate_tx/${hex}"`;
+
+    const { result } = await fetch(url).then(r => r.json());
+    const raw = result?.response?.value;
+    if (!raw) return null;                     // nothing returned
+
+    const decoded = b64(raw);
+    if (!decoded || decoded === "\x9Eée" || decoded === "AA==") return null;
+
+    // simulate_tx wraps result inside {"result": "..."}
+    const parsed = JSON.parse(decoded)?.result;
+    return parsed != null ? Number.parseFloat(parsed) : null;
+  } catch {
+    return null;                               // network / parse error
+  }
+}
+
+/**
+ * Legacy path: read <contract>.balances:<address> from state table
+ */
+async function fallbackStateKey(contract, addr) {
+  const stateKey = `${contract}.balances:${addr}`;
+
+  const query = `
+    query Balance {
+      allStates(filter:{ key:{ equalTo:"${stateKey}" } } first:1){
+        edges{ node{ value } }
+      }
+    }`;
+
+  try {
+    const gql   = await executeGraphQLQuery(query);
+    const edge  = gql?.data?.allStates?.edges?.[0];
+    const value = edge ? edge.node.value : null;
+    return value !== null ? Number.parseFloat(value) : 0;
+  } catch {
+    return 0;
   }
 }
