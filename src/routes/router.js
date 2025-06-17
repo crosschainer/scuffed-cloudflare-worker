@@ -43,7 +43,7 @@ const STATIC = {
   "/circulating-supply":  { handler: circulatingSupplyHandler,ttl: TTL_1H },
   "/total-holders":       { handler: totalHoldersHandler,     ttl: TTL_1H },
 
-  "/pairs":               { handler: getPairs,                ttl: TTL_10M },
+  "/pairs":               { handler: getPairs,                ttl: TTL_5S },
   "/tokens":              { handler: getAllTokens,            ttl: TTL_10M },
   "/contracts":           { handler: getAllContracts,         ttl: TTL_10M },
 
