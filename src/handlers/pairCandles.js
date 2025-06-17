@@ -98,7 +98,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
           condition:{contract:"con_pairs",event:"Swap"}
           filter:{
             dataIndexed:{contains:{pair:$pair}}
-            created:{greaterThan:$since, lessThan:$until}
+            created:{greaterThanOrEqualTo:$since, lessThan:$until}
           }
           orderBy: CREATED_DESC
           first:$first
