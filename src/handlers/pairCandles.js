@@ -223,7 +223,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
     const page = {
       after: candles.at(-1)?.t ?? null,
       before: candles[0]
-   ? new Date(Date.parse(candles[0].t) - 1).toISOString()
+   ? candles[0].t /* overlap 1 bucket; or add ivMs for no overlap */
    : null,
       hasNext: !!beforeQ || (!beforeQ && sinceMs > 0 && untilMs < now),
       hasPrev: !!afterQ || (untilMs < now)
