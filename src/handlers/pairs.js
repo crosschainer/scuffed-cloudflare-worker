@@ -147,8 +147,7 @@ export async function getPairs(request) {
         meta.token0 === "con_usdc" && meta.token1 === "currency";
 
       /* ---------- 24 h Volume ------------------------------- */
-      const volume24h = isCurrencyUsdc ? (s.v0 || 0)       // token-0 side
-                                       : (s.v1 || 0);      // default token-1
+      const volume24h =  (s.v1 || 0);      // default token-1
 
       /* ---------- 24 h Price % ------------------------------ */
       let changePct = null;
