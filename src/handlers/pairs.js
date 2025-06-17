@@ -134,24 +134,43 @@ export async function getPairs(request) {
     }));
 
     /* ── 3. enrich with volume + Δ% --------------------------- */
-    const enriched = pairsMeta.map(m => {
-      const s = stats.get(m.pair) || {};
+        const enriched = pairsMeta.map(meta => {
+      const s = stats.get(meta.pair) || {};
 
-      const volume24h = s.v1 || 0;      // token-1 side (USD)
-      let changePct   = null;
+      /* ----------------------------------------------------------
+         Special-case the “currency / con_usdc” pool (#1 on chain):
+         on-chain it is  (token0 = con_usdc , token1 = currency)
+         The stand-alone /pricechange24h endpoint uses token=0
+         there – i.e. **no** inversion. We must mimic that.
+      ---------------------------------------------------------- */
+      const isCurrencyUsdc =
+        meta.token0 === "con_usdc" && meta.token1 === "currency";
 
-      const now0 = s.close;
-      const old0 = s.baseline ?? s.open;   // prefer true baseline
-      if (now0 && old0) {
-        const now1 = 1 / now0;
-        const old1 = 1 / old0;
-        changePct = ((now1 - old1) / old1) * 100;
+      /* ---------- 24 h Volume ------------------------------- */
+      const volume24h = isCurrencyUsdc ? (s.v0 || 0)       // token-0 side
+                                       : (s.v1 || 0);      // default token-1
+
+      /* ---------- 24 h Price % ------------------------------ */
+      let changePct = null;
+      const pNow0 = s.close;
+      const pOld0 = s.baseline ?? s.open;
+
+      if (pNow0 && pOld0) {
+        if (isCurrencyUsdc) {
+          /* same orientation as /pricechange24h?token=0  */
+          changePct = ((pNow0 - pOld0) / pOld0) * 100;
+        } else {
+          /* default orientation → invert like token=1    */
+          const pNowInv = 1 / pNow0;
+          const pOldInv = 1 / pOld0;
+          changePct = ((pNowInv - pOldInv) / pOldInv) * 100;
+        }
       }
 
       return {
-        pair        : m.pair,
-        token0      : m.token0,
-        token1      : m.token1,
+        pair        : meta.pair,
+        token0      : meta.token0,
+        token1      : meta.token1,
         volume24h,
         pricePct24h : changePct
       };
