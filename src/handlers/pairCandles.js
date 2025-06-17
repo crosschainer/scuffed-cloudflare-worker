@@ -219,10 +219,12 @@ export async function pairCandlesHandler(request /*, ctx */) {
         // lastClose remains unchanged
       }
     }
-
+    const firstTs = candles.length ? Date.parse(candles[0].t) : null;
     const page = {
       after: candles.at(-1)?.t ?? null,
-      before: candles[0]?.t ?? null,         // include the bucket itself
+      before: firstTs != null
+            ? new Date(firstTs + ivMs).toISOString()   // ⬅️  new line
+            : null,
       hasNext: !!beforeQ || (!beforeQ && sinceMs > 0 && untilMs < now),
       hasPrev: !!afterQ || (untilMs < now)
     };
