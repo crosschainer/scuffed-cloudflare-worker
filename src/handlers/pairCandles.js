@@ -82,8 +82,8 @@ export async function pairCandlesHandler(request /*, ctx */) {
       }
     }
 
-    const sinceIso = new Date(sinceMs).toISOString().replace("Z", ""),
-      untilIso = new Date(untilMs).toISOString().replace("Z", "");
+    const sinceIso = new Date(sinceMs).toISOString();   // keep the Z → stays UTC
+ const untilIso = new Date(untilMs).toISOString();
 
     /* ── GraphQL paged load ───────────────────────────────────── */
     const gql = `
