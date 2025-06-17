@@ -4,7 +4,7 @@
 import { executeGraphQLQuery } from "../utils/graphql.js";
 import { json }                from "../utils/response.js";
 
-const CHUNK      = 1_000;          // GraphQL page size
+const CHUNK      = 1_000;          // swaps page size
 const WINDOW_MS  = 86_400_000;     // 24 h
 const NOW        = () => Date.now();
 
@@ -16,18 +16,25 @@ const price0 = d => {
        : null;
 };
 
+/* tiny util -------------------------------------------------------- */
+const chunk = (arr, n) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+};
+
 /* ------------------------------------------------------------------ */
-/*  GET /pairs?offset=X&limit=Y   – ordered by 24 h-volume DESC       */
+/*  GET /pairs?offset=X&limit=Y – ordered by 24 h volume (DESC)       */
 /* ------------------------------------------------------------------ */
 export async function getPairs(request) {
   try {
-    /* ── 0. pagination ───────────────────────────────────────── */
+    /* ── 0. pagination ---------------------------------------- */
     const url     = new URL(request.url);
     const offset  = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10));
-    const limit   = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") || "25", 10)), 100);
+    const limit   = Math.min(Math.max(1, parseInt(url.searchParams.get("limit")  || "25", 10)), 100);
 
-    /* ── 1-a. swaps within the last 24 h ─────────────────────── */
-    const sinceIso = new Date(NOW() - WINDOW_MS).toISOString();   // keep the “Z”
+    /* ── 1-a. swaps inside the last 24 h ---------------------- */
+    const sinceIso = new Date(NOW() - WINDOW_MS).toISOString();   // keep “Z”
 
     const swaps24hGql = `
       query Swaps24h($since:Datetime!,$first:Int!,$offset:Int!){
@@ -40,14 +47,14 @@ export async function getPairs(request) {
         ){ edges{ node{ data dataIndexed created }} }
       }`;
 
-    const stats = new Map();   // pair → { v0,v1, close, open, baseline }
+    const stats = new Map();   // pair → {v0,v1,close,open,baseline}
     let pageOff = 0, done = false;
 
     while (!done) {
       const res = await executeGraphQLQuery(
         swaps24hGql,
         { since: sinceIso, first: CHUNK, offset: pageOff },
-        "GraphQL error on /pairs(24 h) loop"
+        "GraphQL error on /pairs aggregation"
       );
 
       const edges = res?.data?.allEvents?.edges ?? [];
@@ -59,16 +66,15 @@ export async function getPairs(request) {
         if (!pair) continue;
 
         const rec = stats.get(pair) || { v0:0, v1:0, open:undefined, close:undefined };
-
-        /* volume aggregation */
+        /* volumes ---------------------------------------------------- */
         rec.v0 += (+data.amount0In  || 0) + (+data.amount0Out || 0);
         rec.v1 += (+data.amount1In  || 0) + (+data.amount1Out || 0);
 
-        /* open / close for price-change calc (token-0 side) */
+        /* open / close for price change ------------------------------ */
         const p0 = price0(data);
         if (p0 !== null) {
-          if (rec.close === undefined) rec.close = p0;   // newest ⇒ close
-          rec.open  = p0;                                 // will end oldest
+          if (rec.close === undefined) rec.close = p0;  // newest ⇒ close
+          rec.open = p0;                                // will end oldest
         }
         stats.set(pair, rec);
       }
@@ -77,49 +83,43 @@ export async function getPairs(request) {
       pageOff += CHUNK;
     }
 
-    /* ── 1-b. ONE baseline swap (<=24 h ago) per pair ─────────── */
-    const pairsNeedBaseline = [...stats.keys()]
+    /* ── 1-b. one baseline swap (≤ since) *per pair* ---------- */
+    const needBaseline = [...stats.keys()]
       .filter(id => stats.get(id).close !== undefined && stats.get(id).baseline === undefined);
 
-    if (pairsNeedBaseline.length) {
+    if (needBaseline.length) {
+      /* reuse the single-pair baseline query from /pricechange24h */
       const baselineGql = `
-        query Baselines($pairs:[String!],$since:Datetime!,$first:Int!,$offset:Int!){
+        query Baseline($pair:String!,$since:Datetime!){
           allEvents(
+            first:1 orderBy:CREATED_DESC
             condition:{contract:"con_pairs",event:"Swap"}
             filter:{
-              dataIndexed:{pair:{in:$pairs}}
+              dataIndexed:{contains:{pair:$pair}}
               created:{lessThanOrEqualTo:$since}
             }
-            orderBy:CREATED_DESC
-            first:$first
-            offset:$offset
-          ){ edges{ node{ data dataIndexed }} }
+          ){ edges{ node{ data }} }
         }`;
 
-      let off = 0, gotAll = false;
-      while (!gotAll) {
-        const res = await executeGraphQLQuery(
-          baselineGql,
-          { pairs:pairsNeedBaseline, since:sinceIso, first:CHUNK, offset:off },
-          "GraphQL error on baseline batch"
-        );
-        const edges = res?.data?.allEvents?.edges ?? [];
-        if (!edges.length) break;
-
-        for (const { node } of edges) {
-          const pair = node.dataIndexed?.pair;
-          const rec  = stats.get(pair);
-          if (rec && rec.baseline === undefined) {
+      /* polite concurrency: fetch up to 25 baselines in parallel ---- */
+      const GROUP = 25;
+      for (const grp of chunk(needBaseline, GROUP)) {
+        await Promise.all(grp.map(async pairId => {
+          const res = await executeGraphQLQuery(
+            baselineGql,
+            { pair: pairId, since: sinceIso },
+            "GraphQL error on baseline fetch"
+          );
+          const node = res?.data?.allEvents?.edges?.[0]?.node;
+          if (node) {
             const p0 = price0(node.data);
-            if (p0 !== null) rec.baseline = p0;
+            if (p0 !== null) stats.get(pairId).baseline = p0;
           }
-        }
-        gotAll = edges.length < CHUNK;
-        off   += CHUNK;
+        }));
       }
     }
 
-    /* ── 2. static pair metadata (once) ──────────────────────── */
+    /* ── 2. static pair metadata ------------------------------------ */
     const metaGql = `
       query PairsMeta {
         allEvents(condition:{contract:"con_pairs",event:"PairCreated"}) {
@@ -133,21 +133,19 @@ export async function getPairs(request) {
       token1 : e.node.dataIndexed.token1
     }));
 
-    /* ── 3. enrich + compute pricePct24h (token-1 denom) ─────── */
+    /* ── 3. enrich with volume + Δ% --------------------------- */
     const enriched = pairsMeta.map(m => {
       const s = stats.get(m.pair) || {};
 
-      /* volume: always token-1 (the “USD side”) */
-      const volume24h = s.v1 || 0;
+      const volume24h = s.v1 || 0;      // token-1 side (USD)
+      let changePct   = null;
 
-      /* price change identical to /pricechange24h?token=1 */
-      const pNow0 = s.close;
-      const pOld0 = s.baseline ?? s.open;
-      let changePct = null;
-      if (pNow0 && pOld0) {
-        const pNow1 = 1 / pNow0;
-        const pOld1 = 1 / pOld0;
-        changePct = ((pNow1 - pOld1) / pOld1) * 100;
+      const now0 = s.close;
+      const old0 = s.baseline ?? s.open;   // prefer true baseline
+      if (now0 && old0) {
+        const now1 = 1 / now0;
+        const old1 = 1 / old0;
+        changePct = ((now1 - old1) / old1) * 100;
       }
 
       return {
@@ -159,14 +157,14 @@ export async function getPairs(request) {
       };
     });
 
-    /* ── 4. rank by volume24h-DESC & paginate ────────────────── */
-    enriched.sort((a, b) => b.volume24h - a.volume24h);
+    /* ── 4. rank by volume24h DESC & paginate ----------------- */
+    enriched.sort((a,b) => b.volume24h - a.volume24h);
 
     const page    = enriched.slice(offset, offset + limit);
     const hasNext = offset + limit < enriched.length;
     const hasPrev = offset > 0;
 
-    /* ── 5. respond ──────────────────────────────────────────── */
+    /* ── 5. response ----------------------------------------- */
     return json({
       pairs : page,
       pagination : {
@@ -180,6 +178,6 @@ export async function getPairs(request) {
 
   } catch (err) {
     if (err instanceof Response) return err;
-    return json({ error: "Internal error", message: err.message }, { status: 500 });
+    return json({ error:"Internal error", message:err.message }, { status:500 });
   }
 }
