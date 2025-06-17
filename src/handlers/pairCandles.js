@@ -222,9 +222,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
 
     const page = {
       after: candles.at(-1)?.t ?? null,
-      before: candles[0]
-   ? candles[0].t /* overlap 1 bucket; or add ivMs for no overlap */
-   : null,
+      before: candles[0]?.t ?? null,         // include the bucket itself
       hasNext: !!beforeQ || (!beforeQ && sinceMs > 0 && untilMs < now),
       hasPrev: !!afterQ || (untilMs < now)
     };
