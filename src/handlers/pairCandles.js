@@ -98,7 +98,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
           condition:{contract:"con_pairs",event:"Swap"}
           filter:{
             dataIndexed:{contains:{pair:$pair}}
-            created:{greaterThanOrEqualTo:$since, lessThan:$until}
+            created:{greaterThanOrEqualTo:$since, lessThanOrEqualTo:$until}
           }
           orderBy: CREATED_DESC
           first:$first
@@ -166,7 +166,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
     let lastClose = null;
     // start at the first full bucket ≥ sinceMs
     const start = Math.ceil(sinceMs / ivMs) * ivMs;
-    const end = Math.floor((untilMs - 1) / ivMs) * ivMs;
+    const end = Math.floor(untilMs / ivMs) * ivMs;
 
     for (let b = start; b <= end; b += ivMs) {
       const rec = raw.get(b);
