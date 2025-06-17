@@ -78,6 +78,49 @@ export async function getPairs(request) {
       pageOffset += CHUNK;
     }
 
+    /* ── 1 b.  ONE baseline swap / pair (≤ since)  ─────────────── */
+    const pairsNeedingBaseline = [...stats.keys()]
+      .filter(id => stats.get(id).close !== undefined   // we saw ≥1 swap
+                  && stats.get(id).baseline === undefined);
+
+    if (pairsNeedingBaseline.length) {
+      const baselineGql = `
+        query Baselines($pairs:[String!],$since:Datetime!,$first:Int!,$offset:Int!){
+          allEvents(
+            condition:{contract:"con_pairs",event:"Swap"}
+            filter:{
+              dataIndexed:{pair:{in:$pairs}}
+              created:{lessThanOrEqualTo:$since}
+            }
+            orderBy:CREATED_DESC
+            first:$first
+            offset:$offset
+          ){ edges{ node{ data dataIndexed } } }
+        }`;
+
+      let off = 0, gotAll = false;
+      while (!gotAll) {
+        const res = await executeGraphQLQuery(
+          baselineGql,
+          { pairs:pairsNeedingBaseline, since:sinceIso, first:CHUNK, offset:off },
+          "GraphQL error on baseline batch"
+        );
+        const edges = res?.data?.allEvents?.edges ?? [];
+        if (!edges.length) break;
+
+        for (const { node } of edges) {
+          const pair = node.dataIndexed?.pair;
+          const rec  = stats.get(pair);
+          if (rec && rec.baseline === undefined) {
+            const p0 = price0(node.data);
+            if (p0 !== null) rec.baseline = p0;
+          }
+        }
+        gotAll = edges.length < CHUNK;
+        off   += CHUNK;
+      }
+    }
+
     /* ── 2.  fetch *static* pair metadata (once) ───────────────── */
     const metaGql = `
       query PairsMeta {
@@ -102,7 +145,7 @@ export async function getPairs(request) {
       /* ---------- price change, EXACTLY like endpoint ----------
          /pairs/<id>/pricechange24h?token=1 inverts price0.       */
       const pNow0 = s.close;                 // newest trade inside window
-      const pOld0 = s.open;                  // oldest trade inside window
+      const pOld0 = s.baseline ?? s.open;   // prefer true baseline
 
       let changePct = null;
       if (pNow0 && pOld0) {
