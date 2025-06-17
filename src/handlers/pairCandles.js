@@ -222,7 +222,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
 
     const page = {
       after: candles.at(-1)?.t ?? null,
-      before: candles[0]?.t ?? null,         // include the bucket itself
+      before: candles[0]?.t ? new Date(Date.parse(candles[0].t) + 1).toISOString() : null,
       hasNext: !!beforeQ || (!beforeQ && sinceMs > 0 && untilMs < now),
       hasPrev: !!afterQ || (untilMs < now)
     };
