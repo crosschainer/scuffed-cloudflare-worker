@@ -40,7 +40,7 @@ const TTL_30_D = 60 * 60 * 24 * 30;
 /* ── static lookup table (exact paths) ───────────────────────────── */
 const STATIC = {
   "/":                    { handler: swaggerHandler,          ttl: TTL_1H },
-  "/openapi.json":        { handler: swaggerHandler,          ttl: TTL_1H },
+  "/openapi.json":        { handler: swaggerHandler,          ttl: TTL_5S },
   "/total-supply":        { handler: totalSupplyHandler,      ttl: TTL_1H },
   "/circulating-supply":  { handler: circulatingSupplyHandler,ttl: TTL_1H },
   "/total-holders":       { handler: totalHoldersHandler,     ttl: TTL_1H },
