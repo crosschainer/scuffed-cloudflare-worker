@@ -157,13 +157,13 @@ export default {
     }
 
     /* /pairs/<id>/trades */
-const mTrades = path.match(/^\/pairs\/([^\/]+)\/trades$/);
-if (mTrades)
-  return withEdgeCache(
-    req, ctx,
-    () => pairTradesHandler(req),
-    TTL_5S
-  );
+    const mTrades = path.match(/^\/pairs\/([^\/]+)\/trades$/);
+    if (mTrades)
+      return withEdgeCache(
+        req, ctx,
+        () => pairTradesHandler(req),
+        TTL_5S
+      );
 
 
     /* /pairs/<id> */
@@ -185,23 +185,23 @@ if (mTrades)
       );
 
     const mCandles = path.match(/^\/pairs\/([^\/]+)\/candles$/);
-if (mCandles) {
-  return withEdgeCache(
-    req, ctx,
-    () => pairCandlesHandler(req),
-    TTL_5S      // small cache; each candle query is heavy
-  );
-}
+    if (mCandles) {
+      return withEdgeCache(
+        req, ctx,
+        () => pairCandlesHandler(req),
+        TTL_5S      // small cache; each candle query is heavy
+      );
+    }
 
 
-/* /pairs/with/<tokenContract> */
-const mPairsTok = path.match(/^\/pairs\/with\/([^\/]+)$/);
-if (mPairsTok)
-  return withEdgeCache(
-    req, ctx,
-    () => pairsByTokenHandler(req),
-    TTL_10M
-  );
+    /* /pairs/with/<tokenContract> */
+    const mPairsTok = path.match(/^\/pairs\/with\/([^\/]+)$/);
+    if (mPairsTok)
+      return withEdgeCache(
+        req, ctx,
+        () => pairsByTokenHandler(req),
+        TTL_10M
+      );
 
 
     /* ── static GET routes --------------------------------------- */
