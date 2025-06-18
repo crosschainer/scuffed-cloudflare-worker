@@ -49,6 +49,10 @@ export const openapiSpec = {
       name: "Pairs",
       description: "Endpoints related to trading pairs on SnakExchange",
     },
+    {
+      name: "Streams",
+      description: "SSE streams for real-time updates",
+    },
   ],
   paths: {
     "/total-supply": {
@@ -797,10 +801,80 @@ export const openapiSpec = {
     }
   }
 },
+"/stream/pairs": {
+  get: {
+    tags: ["Streams"],
+    summary: "Stream list of all created pairs (Edge cache refresh every 5 seconds)",
+    description:
+      "Streams updates to the full list of pairs with pagination support. " +
+      "Updates are emitted when the underlying dataset changes. Uses Server-Sent Events (SSE).",
+    parameters: [
+      {
+        name: "offset",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", minimum: 0, default: 0 },
+        description: "Zero-based row offset"
+      },
+      {
+        name: "limit",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 50, default: 10 },
+        description: "Rows per page (max 50)"
+      },
+      {
+        name: "order",
+        in:   "query",
+        required: false,
+        schema: { type: "string", enum: ["asc", "desc"], default: "asc" },
+        description: "Pair-id order: asc = oldest→newest, desc = newest→oldest"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "SSE stream of pair list with pagination",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example:
+                `event: data\ndata: {"pairs":[{"pair":"42","token0":"con_usdc","token1":"con_xian"}],` +
+                `"pagination":{"offset":0,"limit":10,"total":117,"next":10,"previous":null,"order":"asc"}}\n\n`
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Bad request",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Invalid limit"}\n\n`
+            }
+          }
+        }
+      },
+      "500": {
+        description: "Server error",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Internal error","message":"Something went wrong"}\n\n`
+            }
+          }
+        }
+      }
+    }
+  }
+}
+,
 "/pairs/{pairId}": {
   get: {
     tags: ["Pairs"],
-    summary: "Get token contracts that compose a pair (Edge cache: 30 days)",
+    summary: "Get token contracts that compose a pair (Edge cache: 5 seconds)",
     parameters: [
       {
         name: "pairId",
@@ -931,6 +1005,85 @@ export const openapiSpec = {
     }
   }
 },
+"/stream/pairs/{pairId}/volume24h": {
+  get: {
+    tags: ["Streams"],
+    summary: "Stream 24-hour swap volume for a pair (Edge cache refresh every 5 seconds)",
+    description:
+      "Streams live 24h volume data for a trading pair using Server-Sent Events (SSE). " +
+      "The stream emits only when the volume data changes. The origin is hit at most once per interval.",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        description: "Pair identifier (from dataIndexed.pair)",
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in: "query",
+        required: false,
+        description: "Denomination: 0 = token0 (default), 1 = token1",
+        schema: {
+          type: "string",
+          enum: ["0", "1"],
+          default: "0"
+        },
+        example: "1"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "SSE stream of 24-hour volume updates",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example:
+                `event: data\ndata: {"pairId":"1","token":"1","volume24h":98765.43}\n\n`
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Missing or invalid pairId",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Missing \\"pair\\" query parameter"}\n\n`
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Pair not found",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Pair not found"}\n\n`
+            }
+          }
+        }
+      },
+      "500": {
+        description: "Server error",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Internal error","message":"Error message details"}\n\n`
+            }
+          }
+        }
+      }
+    }
+  }
+},
+
 "/pairs/{pairId}/pricechange24h": {
   get: {
     tags: ["Pairs"],
@@ -976,6 +1129,84 @@ export const openapiSpec = {
     }
   }
 },
+"/stream/pairs/{pairId}/pricechange24h": {
+  get: {
+    tags: ["Streams"],
+    summary: "Stream 24-hour price change for a pair (Edge cache refresh every 5 seconds)",
+    description:
+      "Streams live 24-hour price change data for a trading pair using Server-Sent Events (SSE). " +
+      "Includes current price, price 24h ago, and percentage change. Updates only emit when data changes.",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        description: "Pair identifier (from dataIndexed.pair)",
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in: "query",
+        required: false,
+        description: "Denomination: 0 = token0-per-token1 (default), 1 = token1-per-token0",
+        schema: {
+          type: "string",
+          enum: ["0", "1"],
+          default: "0"
+        },
+        example: "1"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "SSE stream of price change updates",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example:
+                `event: data\ndata: {"pairId":"1","token":"0","priceNow":0.002345,"price24hAgo":0.0021,"changePct":11.67}\n\n`
+            }
+          }
+        }
+      },
+      "400": {
+        description: "Missing or invalid pairId",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Missing \\"pair\\" query parameter"}\n\n`
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Pair not found",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Pair not found"}\n\n`
+            }
+          }
+        }
+      },
+      "500": {
+        description: "Server error",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example: `event: error\ndata: {"error":"Internal error","message":"Error message details"}\n\n`
+            }
+          }
+        }
+      }
+    }
+  }
+},
 "/pairs/{pairId}/reserves": {
   get: {
     tags: ["Pairs"],
@@ -1011,6 +1242,42 @@ export const openapiSpec = {
     }
   }
 },
+"/stream/pairs/{pairId}/reserves": {
+  get: {
+    tags: ["Streams"],
+    summary: "Stream current reserves for a pair (Edge cache refresh every 5 seconds)",
+    description:
+      "Streams real-time token reserves for the given pair using Server-Sent Events (SSE). " +
+      "Only emits new data when reserves change. Refreshes the edge cache at most once per interval.",
+    parameters: [
+      {
+        name: "pairId",
+        in:   "path",
+        required: true,
+        schema: { type: "string" },
+        description: "Pair identifier",
+        example: "12"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "SSE stream of updated reserves",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example:
+                `event: data\ndata: {"pairId":"12","reserve0":123456.78,"reserve1":98765.43}\n\n`
+            }
+          }
+        }
+      },
+      "400": { description: "Bad request (e.g. invalid pairId)" },
+      "500": { description: "Server error" }
+    }
+  }
+},
+
 
     "/transactions/sender/{sender}": {
       get: {
@@ -1324,6 +1591,61 @@ export const openapiSpec = {
     }
   }
 },
+"/stream/pairs/{pairId}/trades": {
+  get: {
+    tags: ["Streams"],
+    summary: "Stream recent trades for a pair (Edge cache refresh every 5 seconds)",
+    description:
+      "Streams real-time recent trades for the given pair using Server-Sent Events (SSE). " +
+      "Only emits if the data changes compared to the previous push.",
+    parameters: [
+      {
+        name: "pairId",
+        in:   "path",
+        required: true,
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in:   "query",
+        required: false,
+        schema: { type: "string", enum: ["0", "1"], default: "0" },
+        description: "Price / amount denomination (0 = token0, 1 = token1)"
+      },
+      {
+        name: "offset",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", default: 0, minimum: 0 },
+        description: "Row offset (newest = 0). SSE clients usually leave this at 0"
+      },
+      {
+        name: "limit",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", default: 50, minimum: 1, maximum: 100 },
+        description: "Rows per page (max 100)"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "SSE stream of recent trades",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example:
+                `event: data\ndata: {"pairId":"1","token":"0","trades":[...],"pagination":{...}}\n\n`
+            }
+          }
+        }
+      },
+      "400": { description: "Bad request" },
+      "500": { description: "Server error" }
+    }
+  }
+},
 "/pairs/{pairId}/candles": {
   get: {
     tags: ["Pairs"],
@@ -1439,6 +1761,93 @@ export const openapiSpec = {
     }
   }
 },
+"/stream/pairs/{pairId}/candles": {
+  get: {
+    tags: ["Streams"],
+    summary: "Stream OHLCV candles for a pair (Edge cache refresh every 5 seconds)",
+    description:
+      "Streams fixed-interval price/volume candles for the given pair using Server-Sent Events (SSE). " +
+      "Automatically emits updates only if data changes. Use query parameters to specify token, interval, and time range.",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in: "query",
+        required: false,
+        schema: { type: "string", enum: ["0", "1"], default: "0" },
+        description: "Denomination (0 = token0 price / volume, 1 = token1)"
+      },
+      {
+        name: "interval",
+        in: "query",
+        required: false,
+        schema: {
+          type: "string",
+          pattern: "^[0-9]+[mhd]$",
+          default: "1h"
+        },
+        description: "Candle width: e.g. 5m, 2h, 7d (m = minutes, h = hours, d = days)"
+      },
+      {
+        name: "range",
+        in: "query",
+        required: false,
+        schema: {
+          type: "string",
+          pattern: "^[0-9]+[mhd]$",
+          default: "1d"
+        },
+        description: "Time span when **before/after** are omitted (same units as *interval*)"
+      },
+      {
+        name: "before",
+        in: "query",
+        required: false,
+        schema: {
+          oneOf: [
+            { type: "string", format: "date-time" },
+            { type: "integer", description: "Unix epoch ms" }
+          ]
+        },
+        description: "Return candles **ending** at (exclusive). May not be used with **after**."
+      },
+      {
+        name: "after",
+        in: "query",
+        required: false,
+        schema: {
+          oneOf: [
+            { type: "string", format: "date-time" },
+            { type: "integer", description: "Unix epoch ms" }
+          ]
+        },
+        description: "Return candles **starting** at (inclusive). May not be used with **before**."
+      }
+    ],
+    responses: {
+      "200": {
+        description: "SSE stream of candle updates",
+        content: {
+          "text/event-stream": {
+            schema: {
+              type: "string",
+              example:
+                `event: data\ndata: {"pairId":"1","token":"0","interval":"1h","candles":[...],"page":{...}}\n\n`
+            }
+          }
+        }
+      },
+      "400": { description: "Bad request (validation error, too many candles, etc.)" },
+      "500": { description: "Server error" }
+    }
+  }
+},
 
 "/pairs/with/{tokenContract}": {
   get: {
@@ -1493,6 +1902,7 @@ export const openapiSpec = {
     }
   }
 },
+
 
 
     "components": {
