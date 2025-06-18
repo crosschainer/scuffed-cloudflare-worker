@@ -216,7 +216,6 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/candles`;
-            u.search = orig.search; // preserve full query string
             return new Request(u.toString(), req);
           }
         },
@@ -227,7 +226,6 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/volume24h`;
-            u.search = orig.search; // preserve full query string
             return new Request(u.toString(), req);
           }
         },
@@ -238,7 +236,6 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/pricechange24h`;
-            u.search = orig.search; // preserve full query string
             return new Request(u.toString(), req);
           }
         },
@@ -249,7 +246,6 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/trades`;
-            u.search = orig.search; // preserve full query string
             return new Request(u.toString(), req);
           }
         },
@@ -260,7 +256,6 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/reserves`;
-            u.search = orig.search; // preserve full query string
             return new Request(u.toString(), req);
           }
         },
@@ -271,7 +266,6 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = "/pairs";
-            u.search = orig.search; // preserve full query string
             return new Request(u.toString(), req);
           }
         }
