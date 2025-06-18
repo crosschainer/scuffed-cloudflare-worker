@@ -29,6 +29,7 @@ import { pairCandlesHandler }                         from "../handlers/pairCand
 import { pairTradesHandler }                          from "../handlers/pairTrades.js";
 import { pairsByTokenHandler }                        from "../handlers/pairsByToken.js";
 import { pairsStreamHandler }                        from "../handlers/pairsStream.js";
+import { pairVolumeStreamHandler }                   from "../handlers/tokenVolumeStream.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
 const TTL_5S   = 5;
@@ -82,7 +83,9 @@ export default {
       return json({ error: "Only GET endpoints or POST /batch allowed." }, { status: 405 });
 
     /* ── dynamic GET routes -------------------------------------- */
-
+    if (path === "/pairs/stream") {
+  return pairsStreamHandler(req, env, ctx);   // ← no edge-cache wrapper
+}
     /* /token/<contract>/balance/<address> */
     const mBal = path.match(/^\/token\/([^\/]+)\/balance\/([^\/]+)$/);
     if (mBal)
@@ -129,6 +132,13 @@ export default {
         () => getTransactionByHash(req, { hash: mTx[1] }),
         TTL_30_D
       );
+
+    /* /pairs/<id>/volume24h/stream */
+const mVolStream = path.match(/^\/pairs\/([^\/]+)\/volume24h\/stream$/);
+if (mVolStream) {
+  url.searchParams.set("pair", mVolStream[1]);
+  return pairVolumeStreamHandler(new Request(url.toString(), req), env, ctx);
+}
 
     /* /pairs/<id>/volume24h */
     const mPairVol = path.match(/^\/pairs\/([^\/]+)\/volume24h$/);
@@ -204,9 +214,7 @@ const mPairsTok = path.match(/^\/pairs\/with\/([^\/]+)$/);
       TTL_10M
     );
 
-    if (path === "/pairs/stream") {
-  return pairsStreamHandler(req, env, ctx);   // ← no edge-cache wrapper
-}
+    
 
 
     /* ── static GET routes --------------------------------------- */

@@ -884,91 +884,83 @@ export const openapiSpec = {
   }
 },
     "/pairs/{pairId}/volume24h": {
-  get: {
-    tags: ["Pairs"],
-    summary: "Get 24-hour swap volume for a pair (Edge cache: 5 seconds)",
-    parameters: [
-      {
-        name: "pairId",
-        in: "path",
-        required: true,
-        description: "Pair identifier (the value stored in dataIndexed.pair)",
-        schema: { type: "string" },
-        example: "1"
-      },
-      {
-        name: "token",
-        in:   "query",
-        required: false,
-        description: "Denomination: 0 = token0 (default), 1 = token1",
-        schema: {
-          type: "string",
-          enum: ["0", "1"],
-          default: "0"
+    get: {
+      tags: ["Pairs"],
+      summary: "24-hour swap volume for a pair (Edge cache 5 s)",
+      parameters: [
+        {
+          name: "pairId",
+          in:   "path",
+          required: true,
+          schema: { type:"string" },
+          description: "Pair identifier (same as /pairs list)"
         },
-        example: "1"
-      }
-    
-    ],
-    responses: {
-       "200": {
-        description: "24-hour volume for the requested pair, denominated in the chosen token",
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              properties: {
-                pairId:    { type: "string", example: "1" },
-                token:     { type: "string", example: "1" },
-                volume24h: { type: "number", format: "float", example: 98765.43 }
-              }
-            }
-          }
+        {
+          name: "token",
+          in:   "query",
+          required: false,
+          schema: { type:"string", enum:["0","1"], default:"0" },
+          description: "Which token side: 0 = token0 (default), 1 = token1"
         }
-      },
-      "400": {
-        description: "Missing or invalid pairId",
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              properties: {
-                error: { type: "string", example: "Missing \"pair\" query parameter" }
-              }
-            }
-          }
-        }
-      },
-      "404": {
-        description: "Pair not found",
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              properties: {
-                error: { type: "string", example: "Pair not found" }
-              }
-            }
-          }
-        }
-      },
-      "500": {
-        description: "Server error",
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              properties: {
-                error:   { type: "string", example: "Internal error" },
-                message: { type: "string", example: "Error message details" }
+      ],
+      responses: {
+        "200": {
+          description: "Volume snapshot",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  pairId:    { type:"string", example:"42" },
+                  token:     { type:"integer", example:0 },
+                  volume24h: { type:"number",  example:123456.789 }
+                }
               }
             }
           }
         }
       }
     }
-  }
-},
+  },
+
+  "/pairs/{pairId}/volume24h/stream": {
+    get: {
+      tags: ["Pairs"],
+      summary: "Live stream of 24-h volume (Server-Sent Events)",
+      description:
+        "Keeps the connection open and emits an updated volume snapshot every ~5 s in SSE format.",
+      parameters: [
+        {
+          name: "pairId",
+          in:   "path",
+          required: true,
+          schema: { type:"string" }
+        },
+        {
+          name: "token",
+          in:   "query",
+          required: false,
+          schema: { type:"string", enum:["0","1"], default:"0" },
+          description: "Which token side to stream"
+        }
+      ],
+      responses: {
+        "200": {
+          description: "SSE stream of volume snapshots",
+          content: {
+            "text/event-stream": {
+              schema: {
+                type: "string",
+                example:
+`data: {"pairId":"42","token":0,"volume24h":123456.789}
+`
+              }
+            }
+          }
+        }
+      }
+    }
+  },
 "/pairs/{pairId}/pricechange24h": {
   get: {
     tags: ["Pairs"],
