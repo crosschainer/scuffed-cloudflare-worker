@@ -36,21 +36,27 @@ export function sseWithSharedCacheRefresh({ cacheKeyFn, handlerFn, ttl = 5, inte
 
           if (!refreshLocks.has(cacheKey.url)) {
             const lock = (async () => {
-              const fresh = await handlerFn(req, ctx);
-              await writeEdgeCache(cacheKey, fresh, ttl);
-              return fresh;
+                try {
+                const fresh = await handlerFn(req, ctx);
+                await writeEdgeCache(cacheKey, fresh, ttl);
+                return fresh;
+                } catch (err) {
+                console.error("❌ Error inside handlerFn():", err);
+                throw err;
+                }
             })();
             refreshLocks.set(cacheKey.url, lock);
             lock.finally(() => refreshLocks.delete(cacheKey.url));
-          }
+        }
 
           try {
-            const freshResp = await refreshLocks.get(cacheKey.url);
-            const json = await freshResp.clone().json();
-            sendIfChanged(json);
-          } catch (err) {
-            controller.enqueue(encoder.encode(`event: error\ndata: "Refresh failed"\n\n`));
-          }
+  const freshResp = await refreshLocks.get(cacheKey.url);
+  const json = await freshResp.clone().json();
+  sendIfChanged(json);
+} catch (err) {
+  console.error("❌ SSE refresh failed:", err);
+  controller.enqueue(encoder.encode(`event: error\ndata: "Refresh failed"\n\n`));
+}
         }
 
         // Initial send

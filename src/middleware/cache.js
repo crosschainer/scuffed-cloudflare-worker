@@ -89,6 +89,26 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
   return promise;
 }
 
+function addCacheHeaders(response, ttl) {
+  const headers = new Headers(response.headers);
+
+  if (response.status === 200) {
+    const cc = `public, max-age=${ttl}, ` +
+               `stale-while-revalidate=${ttl}, ` +
+               `stale-if-error=${ttl}`;
+    headers.set("Cache-Control", cc);
+  } else {
+    headers.set("Cache-Control", "no-store");
+  }
+
+  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    if (!headers.has(k)) headers.set(k, v);
+  }
+
+  return headers;
+}
+
+
 /** SSE helpers */
 export function generateCacheKey(req) {
   return new Request(canonical(req.url));
