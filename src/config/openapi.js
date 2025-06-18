@@ -731,110 +731,72 @@ export const openapiSpec = {
       }
     },
     "/pairs": {
-    get: {
-      tags: ["Pairs"],
-      summary: "List all created pairs, ordered by 24 h volume (Edge cache 5 s)",
-      parameters: [
-        {
-          name: "offset",
-          in:   "query",
-          required: false,
-          schema: { type: "integer", minimum: 0, default: 0 },
-          description: "Zero-based row offset"
-        },
-        {
-          name: "limit",
-          in:   "query",
-          required: false,
-          schema: { type: "integer", minimum: 1, maximum: 100, default: 25 },
-          description: "Rows per page (max 100)"
-        }
-      ],
-      responses: {
-        "200": {
-          description: "Paginated list of pairs",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  pairs: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        pair:         { type: "string", example: "42" },
-                        token0:       { type: "string", example: "con_usdc" },
-                        token1:       { type: "string", example: "con_xian" },
-                        volume24h:    { type: "number", example: 123456.789 },
-                        pricePct24h:  { type: ["number","null"], example: 2.34 }
-                      }
-                    }
-                  },
-                  pagination: {
+  get: {
+    tags: ["Pairs"],
+    summary: "List all created pairs (Edge cache: 10 minutes)",
+    parameters: [
+      {
+        name: "offset",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", minimum: 0, default: 0 },
+        description: "Zero-based row offset"
+      },
+      {
+        name: "limit",
+        in:   "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 50, default: 10 },
+        description: "Rows per page (max 50)"
+      },
+      {
+        name: "order",
+        in:   "query",
+        required: false,
+        schema: { type: "string", enum: ["asc", "desc"], default: "asc" },
+        description: "Pair-id order: asc = oldest→newest, desc = newest→oldest"
+      }
+    ],
+    responses: {
+      "200": {
+        description: "Paginated list of pairs",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairs: {
+                  type: "array",
+                  items: {
                     type: "object",
                     properties: {
-                      offset:   { type: "integer", example: 20 },
-                      limit:    { type: "integer", example: 25 },
-                      total:    { type: "integer", example: 117 },
-                      next:     { type: ["integer","null"], example: 45 },
-                      previous: { type: ["integer","null"], example: 0 }
+                      pair:   { type: "string", example: "42" },
+                      token0: { type: "string", example: "con_usdc" },
+                      token1: { type: "string", example: "con_xian" }
                     }
+                  }
+                },
+                pagination: {
+                  type: "object",
+                  properties: {
+                    offset:   { type: "integer", example: 20 },
+                    limit:    { type: "integer", example: 10 },
+                    total:    { type: "integer", example: 117 },
+                    next:     { type: ["integer","null"], example: 30 },
+                    previous: { type: ["integer","null"], example: 10 },
+                    order:    { type: "string", example: "desc" }
                   }
                 }
               }
             }
           }
-        },
-        "400": { /* bad param */ },
-        "500": { /* server error */ }
-      }
-    }
-  },
-
-  /* -- NEW: live stream of the same snapshot, via SSE ----------- */
-  "/pairs/stream": {
-    get: {
-      tags: ["Pairs"],
-      summary: "Live stream of pair snapshots (Server-Sent Events)",
-      description:
-        "Keeps the connection open and pushes an updated snapshot every ~5 s. " +
-        "Each `data:` line contains UTF-8 JSON identical to a `GET /pairs` response.",
-      parameters: [
-        {
-          name: "offset",
-          in:   "query",
-          required: false,
-          schema: { type: "integer", minimum: 0, default: 0 },
-          description: "Zero-based row offset (same as /pairs)"
-        },
-        {
-          name: "limit",
-          in:   "query",
-          required: false,
-          schema: { type: "integer", minimum: 1, maximum: 100, default: 25 },
-          description: "Rows per page (max 100, same as /pairs)"
         }
-      ],
-      responses: {
-        "200": {
-          description: "SSE stream of JSON snapshots",
-          content: {
-            "text/event-stream": {
-              schema: {
-                type: "string",
-                example:
-`data: {"pairs":[{...}],"pagination":{"offset":0,"limit":25,"total":117,"next":25,"previous":null}}
-`
-              }
-            }
-          }
-        },
-        "400": { /* bad param */ },
-        "500": { /* server error */ }
-      }
+      },
+      "400": { /* bad param */ },
+      "500": { /* server error */ }
     }
-  },
+  }
+},
 "/pairs/{pairId}": {
   get: {
     tags: ["Pairs"],
@@ -884,83 +846,91 @@ export const openapiSpec = {
   }
 },
     "/pairs/{pairId}/volume24h": {
-    get: {
-      tags: ["Pairs"],
-      summary: "24-hour swap volume for a pair (Edge cache 5 s)",
-      parameters: [
-        {
-          name: "pairId",
-          in:   "path",
-          required: true,
-          schema: { type:"string" },
-          description: "Pair identifier (same as /pairs list)"
+  get: {
+    tags: ["Pairs"],
+    summary: "Get 24-hour swap volume for a pair (Edge cache: 5 seconds)",
+    parameters: [
+      {
+        name: "pairId",
+        in: "path",
+        required: true,
+        description: "Pair identifier (the value stored in dataIndexed.pair)",
+        schema: { type: "string" },
+        example: "1"
+      },
+      {
+        name: "token",
+        in:   "query",
+        required: false,
+        description: "Denomination: 0 = token0 (default), 1 = token1",
+        schema: {
+          type: "string",
+          enum: ["0", "1"],
+          default: "0"
         },
-        {
-          name: "token",
-          in:   "query",
-          required: false,
-          schema: { type:"string", enum:["0","1"], default:"0" },
-          description: "Which token side: 0 = token0 (default), 1 = token1"
+        example: "1"
+      }
+    
+    ],
+    responses: {
+       "200": {
+        description: "24-hour volume for the requested pair, denominated in the chosen token",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                pairId:    { type: "string", example: "1" },
+                token:     { type: "string", example: "1" },
+                volume24h: { type: "number", format: "float", example: 98765.43 }
+              }
+            }
+          }
         }
-      ],
-      responses: {
-        "200": {
-          description: "Volume snapshot",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  pairId:    { type:"string", example:"42" },
-                  token:     { type:"integer", example:0 },
-                  volume24h: { type:"number",  example:123456.789 }
-                }
+      },
+      "400": {
+        description: "Missing or invalid pairId",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string", example: "Missing \"pair\" query parameter" }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Pair not found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error: { type: "string", example: "Pair not found" }
+              }
+            }
+          }
+        }
+      },
+      "500": {
+        description: "Server error",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                error:   { type: "string", example: "Internal error" },
+                message: { type: "string", example: "Error message details" }
               }
             }
           }
         }
       }
     }
-  },
-
-  "/pairs/{pairId}/volume24h/stream": {
-    get: {
-      tags: ["Pairs"],
-      summary: "Live stream of 24-h volume (Server-Sent Events)",
-      description:
-        "Keeps the connection open and emits an updated volume snapshot every ~5 s in SSE format.",
-      parameters: [
-        {
-          name: "pairId",
-          in:   "path",
-          required: true,
-          schema: { type:"string" }
-        },
-        {
-          name: "token",
-          in:   "query",
-          required: false,
-          schema: { type:"string", enum:["0","1"], default:"0" },
-          description: "Which token side to stream"
-        }
-      ],
-      responses: {
-        "200": {
-          description: "SSE stream of volume snapshots",
-          content: {
-            "text/event-stream": {
-              schema: {
-                type: "string",
-                example:
-`data: {"pairId":"42","token":0,"volume24h":123456.789}
-`
-              }
-            }
-          }
-        }
-      }
-    }
-  },
+  }
+},
 "/pairs/{pairId}/pricechange24h": {
   get: {
     tags: ["Pairs"],

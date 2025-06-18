@@ -28,8 +28,6 @@ import { batchHandler }                              from "../handlers/batch.js"
 import { pairCandlesHandler }                         from "../handlers/pairCandles.js";
 import { pairTradesHandler }                          from "../handlers/pairTrades.js";
 import { pairsByTokenHandler }                        from "../handlers/pairsByToken.js";
-import { pairsStreamHandler }                        from "../handlers/pairsStream.js";
-import { pairVolumeStreamHandler }                   from "../handlers/tokenVolumeStream.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
 const TTL_5S   = 5;
@@ -40,7 +38,7 @@ const TTL_30_D = 60 * 60 * 24 * 30;
 /* ── static lookup table (exact paths) ───────────────────────────── */
 const STATIC = {
   "/":                    { handler: swaggerHandler,          ttl: TTL_1H },
-  "/openapi.json":        { handler: swaggerHandler,          ttl: TTL_5S },
+  "/openapi.json":        { handler: swaggerHandler,          ttl: TTL_1H },
   "/total-supply":        { handler: totalSupplyHandler,      ttl: TTL_1H },
   "/circulating-supply":  { handler: circulatingSupplyHandler,ttl: TTL_1H },
   "/total-holders":       { handler: totalHoldersHandler,     ttl: TTL_1H },
@@ -83,9 +81,7 @@ export default {
       return json({ error: "Only GET endpoints or POST /batch allowed." }, { status: 405 });
 
     /* ── dynamic GET routes -------------------------------------- */
-    if (path === "/pairs/stream") {
-  return pairsStreamHandler(req, env, ctx);   // ← no edge-cache wrapper
-}
+
     /* /token/<contract>/balance/<address> */
     const mBal = path.match(/^\/token\/([^\/]+)\/balance\/([^\/]+)$/);
     if (mBal)
@@ -132,13 +128,6 @@ export default {
         () => getTransactionByHash(req, { hash: mTx[1] }),
         TTL_30_D
       );
-
-    /* /pairs/<id>/volume24h/stream */
-const mVolStream = path.match(/^\/pairs\/([^\/]+)\/volume24h\/stream$/);
-if (mVolStream) {
-  url.searchParams.set("pair", mVolStream[1]);
-  return pairVolumeStreamHandler(new Request(url.toString(), req), env, ctx);
-}
 
     /* /pairs/<id>/volume24h */
     const mPairVol = path.match(/^\/pairs\/([^\/]+)\/volume24h$/);
@@ -207,14 +196,12 @@ if (mCandles) {
 
 /* /pairs/with/<tokenContract> */
 const mPairsTok = path.match(/^\/pairs\/with\/([^\/]+)$/);
-  if (mPairsTok)
-    return withEdgeCache(
-      req, ctx,
-      () => pairsByTokenHandler(req),
-      TTL_10M
-    );
-
-    
+if (mPairsTok)
+  return withEdgeCache(
+    req, ctx,
+    () => pairsByTokenHandler(req),
+    TTL_10M
+  );
 
 
     /* ── static GET routes --------------------------------------- */

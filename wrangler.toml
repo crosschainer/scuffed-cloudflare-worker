@@ -21,4 +21,4 @@ route = { pattern = "xian-api.poc.workers.dev", custom_domain = true }
 # Optional Wrangler logs
 #########################
 [observability.logs]
-enabled = false
+enabled = true
