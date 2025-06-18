@@ -18,11 +18,11 @@ export function sseWithSharedCacheRefresh({ cacheKeyFn, handlerFn, ttl = 5, inte
                 let lastSent = null; // store last payload sent
 
                 const sendIfChanged = (json) => {
-                    const next = JSON.stringify(json);
-                    if (next !== lastSent) {
-                        lastSent = next;
-                        controller.enqueue(encoder.encode(`data: ${next}\n\n`));
-                    }
+                const next = JSON.stringify(json);
+                if (next !== lastSent && controller.desiredSize > 0) {
+                    lastSent = next;
+                    controller.enqueue(encoder.encode(`data: ${next}\n\n`));
+                }
                 };
 
                 async function fetchAndPush() {
@@ -64,9 +64,12 @@ export function sseWithSharedCacheRefresh({ cacheKeyFn, handlerFn, ttl = 5, inte
 
                 const timer = setInterval(fetchAndPush, interval);
                 const pingTimer = setInterval(() => {
+                if (controller.desiredSize > 0) {
                     controller.enqueue(encoder.encode(`event: ping\ndata: {}\n\n`));
-                }, 15000); // every 15s to keep alive
-                
+                }
+                }, 15000);
+
+
                 req.signal?.addEventListener("abort", () => {
                     clearInterval(timer);
                     clearInterval(pingTimer);
