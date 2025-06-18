@@ -4,6 +4,8 @@
 
 import { json }          from "../utils/response.js";
 import { withEdgeCache } from "../middleware/cache.js";
+import { sseWithSharedCacheRefresh } from "../utils/sseWithSharedCacheRefresh.js";
+import { generateCacheKey } from "../middleware/cache.js";
 
 /* ── handlers ────────────────────────────────────────────────────── */
 import { swaggerHandler }            from "../handlers/swagger.js";
@@ -203,6 +205,91 @@ export default {
         TTL_10M
       );
 
+    /* stream version of candles, volume24, pricechange24, trades, /pairs, reserves */
+    
+    if (path.startsWith("/stream/")) {
+      const streamRoutes = [
+        {
+          pattern: /^\/stream\/pairs\/([^\/]+)\/candles$/,
+          handler: pairCandlesHandler,
+          ttl: TTL_5S,
+          buildRequest: (match, req) => {
+            const u = new URL(req.url);
+            u.pathname = `/pairs/${match[1]}/candles`;
+            u.search = orig.search; // preserve full query string
+            return new Request(u.toString(), req);
+          }
+        },
+        {
+          pattern: /^\/stream\/pairs\/([^\/]+)\/volume24h$/,
+          handler: pairVolume24hHandler,
+          ttl: TTL_5S,
+          buildRequest: (match, req) => {
+            const u = new URL(req.url);
+            u.pathname = `/pairs/${match[1]}/volume24h`;
+            u.search = orig.search; // preserve full query string
+            return new Request(u.toString(), req);
+          }
+        },
+        {
+          pattern: /^\/stream\/pairs\/([^\/]+)\/pricechange24h$/,
+          handler: pairPriceChange24hHandler,
+          ttl: TTL_5S,
+          buildRequest: (match, req) => {
+            const u = new URL(req.url);
+            u.pathname = `/pairs/${match[1]}/pricechange24h`;
+            u.search = orig.search; // preserve full query string
+            return new Request(u.toString(), req);
+          }
+        },
+        {
+          pattern: /^\/stream\/pairs\/([^\/]+)\/trades$/,
+          handler: pairTradesHandler,
+          ttl: TTL_5S,
+          buildRequest: (match, req) => {
+            const u = new URL(req.url);
+            u.pathname = `/pairs/${match[1]}/trades`;
+            u.search = orig.search; // preserve full query string
+            return new Request(u.toString(), req);
+          }
+        },
+        {
+          pattern: /^\/stream\/pairs\/([^\/]+)\/reserves$/,
+          handler: pairReservesHandler,
+          ttl: TTL_5S,
+          buildRequest: (match, req) => {
+            const u = new URL(req.url);
+            u.pathname = `/pairs/${match[1]}/reserves`;
+            u.search = orig.search; // preserve full query string
+            return new Request(u.toString(), req);
+          }
+        },
+        {
+          pattern: /^\/stream\/pairs$/,
+          handler: getPairs,
+          ttl: TTL_5S,
+          buildRequest: (match, req) => {
+            const u = new URL(req.url);
+            u.pathname = "/pairs";
+            u.search = orig.search; // preserve full query string
+            return new Request(u.toString(), req);
+          }
+        }
+      ];
+
+      for (const { pattern, handler, ttl, buildRequest } of streamRoutes) {
+        const match = path.match(pattern);
+        if (match) {
+          const req2 = buildRequest(match, req);
+          return sseWithSharedCacheRefresh({
+            cacheKeyFn: () => generateCacheKey(req2),
+            handlerFn: () => handler(req2, ctx),
+            ttl,
+            interval: ttl * 1000
+          })(req2, ctx);
+        }
+      }
+    }
 
     /* ── static GET routes --------------------------------------- */
     const entry = STATIC[path];

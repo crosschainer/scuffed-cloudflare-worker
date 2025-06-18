@@ -88,3 +88,35 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
   promise.finally(() => inflight.delete(keyStr));
   return promise;
 }
+
+/** SSE helpers */
+export function generateCacheKey(req) {
+  return new Request(canonical(req.url));
+}
+
+/**
+ * Read cache manually (used by SSE)
+ */
+export async function readEdgeCache(request) {
+  const cache    = caches.default;
+  const cacheKey = generateCacheKey(request);
+  return await cache.match(cacheKey);
+}
+
+/**
+ * Write to cache manually (used by SSE)
+ */
+export async function writeEdgeCache(request, response, ttl = DEFAULT_TTL) {
+  if (response.status !== 200) return;
+
+  const cache    = caches.default;
+  const cacheKey = generateCacheKey(request);
+
+  const clone = response.clone();
+  const headers = addCacheHeaders(clone, ttl);
+
+  await cache.put(cacheKey, new Response(clone.body, {
+    status: 200,
+    headers
+  }));
+}
