@@ -103,8 +103,11 @@ export async function totalSupplyHandler(request, event) {
 
     return json({ 
       burnedSupply: (MAXIMUM_SUPPLY - runningSum), 
+      burned_supply: (MAXIMUM_SUPPLY - runningSum), // For backward compatibility
       maximumSupply: MAXIMUM_SUPPLY, 
-      totalSupply: runningSum 
+      maximum_supply: MAXIMUM_SUPPLY, // For backward compatibility
+      totalSupply: runningSum,
+      total_supply: runningSum // For backward compatibility
     });
   } catch (error) {
     // If error is already a Response (from executeGraphQLQuery), return it

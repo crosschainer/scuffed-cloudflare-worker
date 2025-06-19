@@ -76,9 +76,13 @@ export async function circulatingSupplyHandler(request, event) {
     const burnedSupply = maximumSupply - totalSupply; // Assuming 111111111 is the total supply of the token
     return json({
       maximumSupply,
+      maximum_supply: maximumSupply, // For backward compatibility
       burnedSupply,
+      burned_supply: burnedSupply, // For backward compatibility
       totalSupply,
+      total_supply: totalSupply, // For backward compatibility
       circulatingSupply,
+      circulating_supply: circulatingSupply, // For backward compatibility
       excludedSupply: excludedSum,
       excludedAddresses,
 

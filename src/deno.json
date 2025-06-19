@@ -1,0 +1,10 @@
+{
+  "name": "xian-api",
+  "entry": "src/index.js",
+  "env": {
+    "GRAPHQL_URL": "https://node.xian.org/graphql"
+  },
+  "tasks": {
+    "start": "deployctl deploy --project xian-api --entry src/index.js"
+  }
+}
