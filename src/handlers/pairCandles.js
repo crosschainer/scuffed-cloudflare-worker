@@ -20,7 +20,7 @@ function intervalMs(str = "1h") {
 }
 
 /* price of token0 in token1 units -------------------------------- */
-const price0 = d => {
+export const price0 = d => {
   const { amount0In, amount0Out, amount1In, amount1Out } = d;
   return amount0In > 0 && amount1Out > 0 ? amount0In / amount1Out
     : amount1In > 0 && amount0Out > 0 ? amount0Out / amount1In
