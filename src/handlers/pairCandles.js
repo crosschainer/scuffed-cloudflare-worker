@@ -29,6 +29,7 @@ export const price0 = d => {
 
 export async function pairCandlesHandler(request /*, ctx */) {
   try {
+    console.log("pairCandlesHandler", request.url);
     /* ── parse & validate params ─────────────────────────────── */
     const url = new URL(request.url);
     const pairId = url.pathname.match(/^\/pairs\/([^\/]+)\/candles$/)?.[1];
@@ -111,16 +112,20 @@ export async function pairCandlesHandler(request /*, ctx */) {
 
     let offset = 0, done = false;
     const raw = new Map(); // bucketStart → { open,high,low,close,v0,v1,openT,closeT }
-
+    console.log("Fetching candles for", pairId, "token", token,
+                "interval", ivStr, "range", rangeStr,
+                "since", sinceIso, "until", untilIso);
     while (!done) {
+      console.log("Fetching candles page", offset);
       const res = await executeGraphQLQuery(
         gql,
         { pair: pairId, since: sinceIso, until: untilIso, first: CHUNK, offset },
         "Upstream GraphQL error on candles"
       );
+      console.log("Got candles page", offset, res?.data?.allEvents?.edges?.length || 0);
       const edges = res?.data?.allEvents?.edges || [];
       if (!edges.length) break;
-
+      console.log("Processing", edges.length, "events");
       for (const { node: { created, data } } of edges) {
         const ts = Date.parse(created);
         const bucket = Math.floor(ts / ivMs) * ivMs;
@@ -160,6 +165,7 @@ export async function pairCandlesHandler(request /*, ctx */) {
       done = edges.length < CHUNK;
       offset += CHUNK;
     }
+    console.log("Got", raw.size, "buckets");
 
     /* ── fill every bucket  & serialize ───────────────────────── */
     const candles = [];
@@ -167,7 +173,9 @@ export async function pairCandlesHandler(request /*, ctx */) {
     // start at the first full bucket ≥ sinceMs
     const start = Math.ceil(sinceMs / ivMs) * ivMs;
     const end = Math.floor((untilMs - 1) / ivMs) * ivMs;
-
+    console.log("Filling buckets from", new Date(start).toISOString(),
+                "to", new Date(end).toISOString(),
+                "total", (end - start) / ivMs + 1, "buckets");
     for (let b = start; b <= end; b += ivMs) {
       const rec = raw.get(b);
 
