@@ -2,54 +2,56 @@
 /*  router/index.js                                                   */
 /* ------------------------------------------------------------------ */
 
-import { json }          from "../utils/response.js";
+import { json } from "../utils/response.js";
 import { withEdgeCache } from "../middleware/cache.js";
 import { sseWithSharedCacheRefresh } from "../utils/sseWithSharedCacheRefresh.js";
 import { generateCacheKey } from "../middleware/cache.js";
 
 /* ── handlers ────────────────────────────────────────────────────── */
-import { swaggerHandler }            from "../handlers/swagger.js";
-import { totalSupplyHandler }        from "../handlers/totalSupply.js";
-import { circulatingSupplyHandler }  from "../handlers/circulatingSupply.js";
-import { totalHoldersHandler }       from "../handlers/totalHolders.js";
+import { swaggerHandler } from "../handlers/swagger.js";
+import { totalSupplyHandler } from "../handlers/totalSupply.js";
+import { circulatingSupplyHandler } from "../handlers/circulatingSupply.js";
+import { totalHoldersHandler } from "../handlers/totalHolders.js";
 
-import { getAllTokens, getTokenByName }              from "../handlers/tokens.js";
-import { getTokenHolders }                           from "../handlers/tokenHolders.js";
-import { getAllContracts, getContractCode }          from "../handlers/contracts.js";
-import { getTokenBalance }                           from "../handlers/tokenBalance.js";
-import { getPairs }                                  from "../handlers/pairs.js";
-import { pairReservesHandler }                       from "../handlers/pairReserves.js";
-import { pairVolume24hHandler }                      from "../handlers/tokenVolume.js";
-import { pairPriceChange24hHandler }                 from "../handlers/tokenPriceChange.js";
-import { transactionsHandler,
-         getTransactionByHash,
-         getTransactionsBySender }                   from "../handlers/transactions.js";
-import { getPairById }                               from "../handlers/getPairById.js";
-import { tokenDistributionHandler }                  from "../handlers/tokenDistribution.js";
-import { batchHandler }                              from "../handlers/batch.js";
-import { pairCandlesHandler }                         from "../handlers/pairCandles.js";
-import { pairTradesHandler }                          from "../handlers/pairTrades.js";
-import { pairsByTokenHandler }                        from "../handlers/pairsByToken.js";
+import { getAllTokens, getTokenByName } from "../handlers/tokens.js";
+import { getTokenHolders } from "../handlers/tokenHolders.js";
+import { getAllContracts, getContractCode } from "../handlers/contracts.js";
+import { getTokenBalance } from "../handlers/tokenBalance.js";
+import { getPairs } from "../handlers/pairs.js";
+import { pairReservesHandler } from "../handlers/pairReserves.js";
+import { pairVolume24hHandler } from "../handlers/tokenVolume.js";
+import { pairPriceChange24hHandler } from "../handlers/tokenPriceChange.js";
+import {
+  transactionsHandler,
+  getTransactionByHash,
+  getTransactionsBySender
+} from "../handlers/transactions.js";
+import { getPairById } from "../handlers/getPairById.js";
+import { tokenDistributionHandler } from "../handlers/tokenDistribution.js";
+import { batchHandler } from "../handlers/batch.js";
+import { pairCandlesHandler } from "../handlers/pairCandles.js";
+import { pairTradesHandler } from "../handlers/pairTrades.js";
+import { pairsByTokenHandler } from "../handlers/pairsByToken.js";
 
 /* ── TTL helpers ─────────────────────────────────────────────────── */
-const TTL_5S   = 5;
-const TTL_10M  = 60 * 10;
-const TTL_1H   = 60 * 60;
+const TTL_5S = 5;
+const TTL_10M = 60 * 10;
+const TTL_1H = 60 * 60;
 const TTL_30_D = 60 * 60 * 24 * 30;
 
 /* ── static lookup table (exact paths) ───────────────────────────── */
 const STATIC = {
-  "/":                    { handler: swaggerHandler,          ttl: TTL_1H },
-  "/openapi.json":        { handler: swaggerHandler,          ttl: TTL_5S },
-  "/total-supply":        { handler: totalSupplyHandler,      ttl: TTL_1H },
-  "/circulating-supply":  { handler: circulatingSupplyHandler,ttl: TTL_1H },
-  "/total-holders":       { handler: totalHoldersHandler,     ttl: TTL_1H },
+  "/": { handler: swaggerHandler, ttl: TTL_1H },
+  "/openapi.json": { handler: swaggerHandler, ttl: TTL_5S },
+  "/total-supply": { handler: totalSupplyHandler, ttl: TTL_1H },
+  "/circulating-supply": { handler: circulatingSupplyHandler, ttl: TTL_1H },
+  "/total-holders": { handler: totalHoldersHandler, ttl: TTL_1H },
 
-  "/pairs":               { handler: getPairs,                ttl: TTL_5S },
-  "/tokens":              { handler: getAllTokens,            ttl: TTL_10M },
-  "/contracts":           { handler: getAllContracts,         ttl: TTL_10M },
+  "/pairs": { handler: getPairs, ttl: TTL_5S },
+  "/tokens": { handler: getAllTokens, ttl: TTL_10M },
+  "/contracts": { handler: getAllContracts, ttl: TTL_10M },
 
-  "/transactions":        { handler: transactionsHandler,     ttl: TTL_5S }
+  "/transactions": { handler: transactionsHandler, ttl: TTL_5S }
 };
 
 /* ------------------------------------------------------------------ */
@@ -62,13 +64,13 @@ export default {
       return new Response(null, {
         status: 204,
         headers: {
-          "Access-Control-Allow-Origin":  "*",
+          "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
           "Access-Control-Allow-Headers": "Content-Type"
         }
       });
-      
-    const url  = new URL(req.url);
+
+    const url = new URL(req.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
     /* ── /batch (POST)  ------------------------------------------- */
@@ -206,7 +208,7 @@ export default {
       );
 
     /* stream version of candles, volume24, pricechange24, trades, /pairs, reserves */
-    
+
     if (path.startsWith("/stream/")) {
       const streamRoutes = [
         {
@@ -226,6 +228,8 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/volume24h`;
+            // re-inject the pair id
+            u.searchParams.set("pair", match[1]);
             return new Request(u.toString(), req);
           }
         },
@@ -236,6 +240,8 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/pricechange24h`;
+            // re-inject the pair id
+            u.searchParams.set("pair", match[1]);
             return new Request(u.toString(), req);
           }
         },
@@ -256,6 +262,8 @@ export default {
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/reserves`;
+            // re-inject the pair id
+            u.searchParams.set("pair", match[1]);
             return new Request(u.toString(), req);
           }
         },
