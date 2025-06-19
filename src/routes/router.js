@@ -45,8 +45,8 @@ const TTL_30_D = 60 * 60 * 24 * 30;
 const STATIC = {
   "/": { handler: swaggerHandler, ttl: TTL_1H },
   "/openapi.json": { handler: swaggerHandler, ttl: TTL_5S },
-  "/total-supply": { handler: totalSupplyHandler, ttl: TTL_10M },
-  "/circulating-supply": { handler: circulatingSupplyHandler, ttl: TTL_10M },
+  "/total-supply": { handler: totalSupplyHandler, ttl: TTL_5S },
+  "/circulating-supply": { handler: circulatingSupplyHandler, ttl: TTL_5S },
   "/total-holders": { handler: totalHoldersHandler, ttl: TTL_1H },
 
   "/pairs": { handler: getPairs, ttl: TTL_5S },
