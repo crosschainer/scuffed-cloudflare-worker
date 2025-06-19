@@ -77,6 +77,7 @@ export async function circulatingSupplyHandler(request, event) {
     return json({
       maximumSupply,
       maximum_supply: maximumSupply, // For backward compatibility
+      max_supply: maximumSupply, // For backward compatibility
       burnedSupply,
       burned_supply: burnedSupply, // For backward compatibility
       totalSupply,
