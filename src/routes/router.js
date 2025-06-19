@@ -33,6 +33,8 @@ import { pairCandlesHandler } from "../handlers/pairCandles.js";
 import { pairTradesHandler } from "../handlers/pairTrades.js";
 import { pairsByTokenHandler } from "../handlers/pairsByToken.js";
 
+import { getLatestCandleHandler } from "../handlers/latestCandle.js";
+
 /* ── TTL helpers ─────────────────────────────────────────────────── */
 const TTL_5S = 5;
 const TTL_10M = 60 * 10;
@@ -213,11 +215,12 @@ export default {
       const streamRoutes = [
         {
           pattern: /^\/stream\/pairs\/([^\/]+)\/candles$/,
-          handler: pairCandlesHandler,
+          handler: getLatestCandleHandler,
           ttl: TTL_5S,
           buildRequest: (match, req) => {
             const u = new URL(req.url);
             u.pathname = `/pairs/${match[1]}/candles`;
+            u.searchParams.set("pair", match[1]);
             return new Request(u.toString(), req);
           }
         },
