@@ -49,18 +49,26 @@ function canonicalKey(query, variables) {
   return JSON.stringify({ query, variables });
 }
 
-async function executeWithRetry(fn, retries = 1) {
+async function executeWithRetry(fn, retries = 1, initialDelay = 100) {
   let lastError;
+  let delay = initialDelay;
+
   for (let i = 0; i <= retries; i++) {
     try {
       return await fn();
     } catch (err) {
       lastError = err;
       console.warn(`GraphQL attempt ${i + 1} failed:`, err);
-      // Optionally: only retry on specific errors
-      if (err.status && err.status < 500) break; // don't retry 4xx
+
+      // Don't retry on 4xx errors
+      if (err.status && err.status < 500) break;
+
+      // Wait before retrying
+      if (i < retries) await new Promise(r => setTimeout(r, delay));
+      delay *= 2; // exponential backoff
     }
   }
+
   throw lastError;
 }
 
