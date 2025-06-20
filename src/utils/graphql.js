@@ -49,6 +49,21 @@ function canonicalKey(query, variables) {
   return JSON.stringify({ query, variables });
 }
 
+async function executeWithRetry(fn, retries = 1) {
+  let lastError;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      console.warn(`GraphQL attempt ${i + 1} failed:`, err);
+      // Optionally: only retry on specific errors
+      if (err.status && err.status < 500) break; // don't retry 4xx
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Execute a GraphQL query with:
  * - short-term in-memory caching (2s TTL)
@@ -102,7 +117,10 @@ export async function executeGraphQLQuery(
   })();
 
   // 4) Enforce global timeout across fetch+parse
-  const timedPromise = withTimeout(rawPromise, REQUEST_TIMEOUT_MS);
+  const timedPromise = withTimeout(
+    executeWithRetry(rawPromise, 1), // retry once
+    REQUEST_TIMEOUT_MS
+  );
 
   // 5) On completion or error, release slot & clear dedupe
   const finalPromise = timedPromise
