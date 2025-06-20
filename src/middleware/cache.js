@@ -39,10 +39,31 @@ async function safeCompute() {
  * Edge-cache helper
  */
 export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) {
-  const resp = await compute();
-  const headers = new Headers(resp.headers);
-  return new Response(resp.body, { status: resp.status, headers });
-  
+   try {
+      // run your real handler
+      const resp = await compute();
+
+      const headers = new Headers(resp.headers);
+      for (const [k, v] of Object.entries(CORS_HEADERS)) {
+        if (!headers.has(k)) headers.set(k, v);
+      }
+
+      return new Response(resp.body, {
+        status:  resp.status,
+        headers,
+      });
+    } catch (err) {
+      // **return the actual error stack** so you can debug
+      const body = err.stack || err.message || String(err);
+      const headers = new Headers({
+        "Content-Type": "text/plain",
+        ...CORS_HEADERS
+      });
+      return new Response(body, {
+        status: 500,
+        headers
+      });
+    }
 }
 
 
