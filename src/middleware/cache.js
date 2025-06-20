@@ -18,6 +18,23 @@ export const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
+async function safeCompute() {
+  try {
+    return await Promise.race([ compute(), timeout(3000) ]);
+  } catch (err) {
+    console.warn("[withEdgeCache] compute() failed, retrying once...", err);
+    try {
+      await new Promise(r => setTimeout(r, 100));
+      return await Promise.race([ compute(), timeout(3000) ]);
+    } catch (retryErr) {
+      console.error("[withEdgeCache] second attempt failed:", retryErr);
+      if (cached) return cached;
+      return json({ error: "Internal error", message: retryErr.message }, { status: 502 });
+    }
+  }
+}
+
+
 /**
  * Edge-cache helper
  */
@@ -33,28 +50,30 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
   /* 2) de-duplicate refresh ------------------------------------- */
   if (inflight.has(keyStr)) return inflight.get(keyStr);
 
-  /* 3) compute, cache, return ----------------------------------- */
-  const promise = (async () => {
-    let resp;
+  /* 3) compute with timeout and retry --------------------------- */
+  const timeout = ms => new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout after " + ms + "ms")), ms)
+  );
+
+  async function safeCompute() {
     try {
-      resp = await compute();
+      return await Promise.race([compute(), timeout(3000)]);
     } catch (err) {
       console.warn("[withEdgeCache] compute() failed, retrying once...", err);
       try {
-        await new Promise(r => setTimeout(r, 100)); // small delay
-        resp = await compute();                     // retry once
+        await new Promise(r => setTimeout(r, 100));
+        return await Promise.race([compute(), timeout(3000)]);
       } catch (retryErr) {
         console.error("[withEdgeCache] second attempt failed:", retryErr);
-        if (cached) return cached;                  // serve stale if possible
-        return json({
-          error: "Internal error",
-          message: retryErr.message || "Failed after retry"
-        }, { status: 502 }); // Use 502 (bad upstream) instead of 500
+        if (cached) return cached;
+        return json({ error: "Internal error", message: retryErr.message }, { status: 502 });
       }
     }
+  }
 
+  const promise = (async () => {
+    const resp = await safeCompute();
 
-    /* clone / buffer so we can reuse the body twice -------------- */
     let cacheCopy, userCopy;
     if (resp.body && resp.clone) {
       cacheCopy = resp.clone();
@@ -65,22 +84,19 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
       userCopy  = new Response(buf,         resp);
     }
 
-    /* header helper ---------------------------------------------- */
     const addHeaders = (h = new Headers(userCopy.headers)) => {
       if (userCopy.status === 200) {
-        const cc = `public, max-age=${ttl}, ` +
-                   `stale-while-revalidate=${ttl}, ` +
-                   `stale-if-error=${ttl}`;
+        const cc = `public, max-age=${ttl}, stale-while-revalidate=${ttl}, stale-if-error=${ttl}`;
         h.set("Cache-Control", cc);
       } else {
         h.set("Cache-Control", "no-store");
       }
-      for (const [k, v] of Object.entries(CORS_HEADERS))
+      for (const [k, v] of Object.entries(CORS_HEADERS)) {
         if (!h.has(k)) h.set(k, v);
+      }
       return h;
     };
 
-    /* write to edge cache only if 200 ---------------------------- */
     if (userCopy.status === 200) {
       event.waitUntil(cache.put(
         cacheKey,
@@ -88,7 +104,6 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
       ));
     }
 
-    /* send to caller -------------------------------------------- */
     return new Response(userCopy.body, {
       status:  userCopy.status,
       headers: addHeaders()
@@ -99,6 +114,7 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
   promise.finally(() => inflight.delete(keyStr));
   return promise;
 }
+
 
 function addCacheHeaders(response, ttl) {
   const headers = new Headers(response.headers);
