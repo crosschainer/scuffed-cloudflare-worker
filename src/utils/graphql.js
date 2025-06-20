@@ -125,7 +125,7 @@ export async function executeGraphQLQuery(
 
   // 4) Enforce global timeout across fetch+parse
   const timedPromise = withTimeout(
-    executeWithRetry(rawPromise, 1), // retry once
+    executeWithRetry(() => rawPromise(), 1),
     REQUEST_TIMEOUT_MS
   );
 
