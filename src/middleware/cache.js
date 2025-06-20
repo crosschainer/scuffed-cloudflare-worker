@@ -39,31 +39,80 @@ async function safeCompute() {
  * Edge-cache helper
  */
 export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) {
-   try {
-      // run your real handler
-      const resp = await compute();
+  const cache    = caches.default;
+  const cacheKey = new Request(canonical(request.url));
+  const keyStr   = cacheKey.url;
 
-      const headers = new Headers(resp.headers);
-      for (const [k, v] of Object.entries(CORS_HEADERS)) {
-        if (!headers.has(k)) headers.set(k, v);
-      }
+  /* 1) fresh hit ------------------------------------------------- */
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
 
-      return new Response(resp.body, {
-        status:  resp.status,
-        headers,
-      });
+  /* 2) de-duplicate refresh ------------------------------------- */
+  if (inflight.has(keyStr)) return inflight.get(keyStr);
+
+  /* 3) compute with timeout and retry --------------------------- */
+  const timeout = ms => new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout after " + ms + "ms")), ms)
+  );
+
+  async function safeCompute() {
+    try {
+      return await Promise.race([compute(), timeout(13000)]);
     } catch (err) {
-      // **return the actual error stack** so you can debug
-      const body = err.stack || err.message || String(err);
-      const headers = new Headers({
-        "Content-Type": "text/plain",
-        ...CORS_HEADERS
-      });
-      return new Response(body, {
-        status: 500,
-        headers
-      });
+      console.warn("[withEdgeCache] compute() failed, retrying once...", err);
+      try {
+        await new Promise(r => setTimeout(r, 100));
+        return await Promise.race([compute(), timeout(13000)]);
+      } catch (retryErr) {
+        console.error("[withEdgeCache] second attempt failed:", retryErr);
+        if (cached) return cached;
+        return json({ error: "Internal error", message: retryErr.message }, { status: 502 });
+      }
     }
+  }
+
+  const promise = (async () => {
+    const resp = await safeCompute();
+
+    let cacheCopy, userCopy;
+    if (resp.body && resp.clone) {
+      cacheCopy = resp.clone();
+      userCopy  = resp;
+    } else {
+      const buf = await resp.arrayBuffer();
+      cacheCopy = new Response(buf.slice(0), resp);
+      userCopy  = new Response(buf,         resp);
+    }
+
+    const addHeaders = (h = new Headers(userCopy.headers)) => {
+      if (userCopy.status === 200) {
+        const cc = `public, max-age=${ttl}, stale-while-revalidate=${ttl}, stale-if-error=${ttl}`;
+        h.set("Cache-Control", cc);
+      } else {
+        h.set("Cache-Control", "no-store");
+      }
+      for (const [k, v] of Object.entries(CORS_HEADERS)) {
+        if (!h.has(k)) h.set(k, v);
+      }
+      return h;
+    };
+
+    if (userCopy.status === 200) {
+      event.waitUntil(cache.put(
+        cacheKey,
+        new Response(cacheCopy.body, { status: 200, headers: addHeaders() })
+      ));
+    }
+
+    return new Response(userCopy.body, {
+      status:  userCopy.status,
+      headers: addHeaders()
+    });
+  })();
+
+  inflight.set(keyStr, promise);
+  promise.finally(() => inflight.delete(keyStr));
+  return promise;
 }
 
 
