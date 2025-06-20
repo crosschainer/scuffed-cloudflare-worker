@@ -39,9 +39,20 @@ export async function withEdgeCache(request, event, compute, ttl = DEFAULT_TTL) 
     try {
       resp = await compute();
     } catch (err) {
-      if (cached) return cached;                  // stale-while-error
-      return json({ error: err.message || "Internal error" }, { status: 500 });
+      console.warn("[withEdgeCache] compute() failed, retrying once...", err);
+      try {
+        await new Promise(r => setTimeout(r, 100)); // small delay
+        resp = await compute();                     // retry once
+      } catch (retryErr) {
+        console.error("[withEdgeCache] second attempt failed:", retryErr);
+        if (cached) return cached;                  // serve stale if possible
+        return json({
+          error: "Internal error",
+          message: retryErr.message || "Failed after retry"
+        }, { status: 502 }); // Use 502 (bad upstream) instead of 500
+      }
     }
+
 
     /* clone / buffer so we can reuse the body twice -------------- */
     let cacheCopy, userCopy;
