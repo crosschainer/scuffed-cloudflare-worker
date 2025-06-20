@@ -119,37 +119,37 @@ export async function getAllTokens(request) {
     });
   }
 }
-
-/**
- * Get metadata for a specific token by contract name
- * @param {Request} request - The incoming request
- * @param {Object} params - URL parameters
- * @returns {Promise<Response>} - The response with token metadata
- */
 export async function getTokenByName(request, { contractName }) {
   try {
-    console.log(`Getting token data for: ${contractName}`);
-    
-    // Simplified approach: Get contract and metadata in a single query
+    const contractNames = decodeURIComponent(contractName).split(',').map(name => name.trim()).filter(Boolean);
+
+    console.log(`Getting token data for: ${contractNames.join(', ')}`);
+
+    // Generate dynamic GraphQL filters
+    const nameFilters = contractNames.map(name => `{ equalTo: "${name}" }`).join(", ");
+    const stateKeys = contractNames.flatMap(name => [
+      `${name}.metadata:token_name`,
+      `${name}.metadata:token_symbol`,
+      `${name}.metadata:token_logo_url`,
+      `${name}.metadata:token_website`,
+      `${name}.metadata:total_supply`,
+      `${name}.metadata:operator`,
+    ]);
+
     const query = `
       query GetTokenData {
-        # Get contract info
-        allContracts(filter: {name: {equalTo: "${contractName}"}, xsc0001: {equalTo: true}}) {
+        allContracts(filter: {
+          xsc0001: {equalTo: true},
+          name: {in: [${contractNames.map(n => `"${n}"`).join(", ")}]}
+        }) {
           nodes {
             name
             created
           }
         }
-        
-        # Get token metadata
-        allStates(filter: {key: {in: [
-          "${contractName}.metadata:token_name", 
-          "${contractName}.metadata:token_symbol",
-          "${contractName}.metadata:token_logo_url",
-          "${contractName}.metadata:token_website",
-          "${contractName}.metadata:total_supply",
-          "${contractName}.metadata:operator"
-        ]}}) {
+        allStates(filter: {
+          key: {in: [${stateKeys.map(k => `"${k}"`).join(", ")}]}
+        }) {
           edges {
             node {
               key
@@ -159,58 +159,49 @@ export async function getTokenByName(request, { contractName }) {
         }
       }
     `;
-    
+
     console.log(`Executing query: ${query}`);
     const data = await executeGraphQLQuery(query);
     console.log(`Query result: ${JSON.stringify(data)}`);
-    
-    // Check if contract exists
-    const contract = data?.data?.allContracts?.nodes?.[0];
-    
-    if (!contract) {
-      console.log(`Token contract not found: ${contractName}`);
-      return new Response(JSON.stringify({ 
-        error: 'Token contract not found', 
-        message: 'The specified contract does not exist or is not a token (XSC-0001 standard)'
-      }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-    console.log(`Contract found: ${JSON.stringify(contract)}`);
-    
-    // Process metadata
+
+    const contracts = data?.data?.allContracts?.nodes || [];
     const metaEdges = data?.data?.allStates?.edges || [];
-    const metadata = {};
-    
-    metaEdges.forEach(({ node }) => {
-      const parts = node.key.split(":");
-      if (parts.length === 2) {
-        const field = parts[1];
-        metadata[field] = node.value;
+
+    const results = contractNames.map(name => {
+      const contract = contracts.find(c => c.name === name);
+      if (!contract) {
+        return {
+          contractName: name,
+          error: 'Token contract not found',
+          message: 'The specified contract does not exist or is not a token (XSC-0001 standard)'
+        };
       }
+
+      const metadata = {};
+      metaEdges.forEach(({ node }) => {
+        if (node.key.startsWith(`${name}.metadata:`)) {
+          const field = node.key.split(":")[1];
+          metadata[field] = node.value;
+        }
+      });
+
+      return {
+        contractName: contract.name,
+        token_name: metadata.token_name || null,
+        token_symbol: metadata.token_symbol || null,
+        token_logo_url: metadata.token_logo_url || null,
+        token_website: metadata.token_website || null,
+        total_supply: metadata.total_supply ? parseFloat(metadata.total_supply) : null,
+        operator: metadata.operator || null,
+        display: metadata.token_name
+          ? `${metadata.token_name}${metadata.token_symbol ? " (" + metadata.token_symbol + ")" : ""}`
+          : contract.name,
+        created_at: contract.created
+      };
     });
-    
-    console.log(`Metadata parsed: ${JSON.stringify(metadata)}`);
-    
-    // Format the response
-    const tokenData = {
-      contractName: contract.name,
-      token_name: metadata.token_name || null,
-      token_symbol: metadata.token_symbol || null,
-      token_logo_url: metadata.token_logo_url || null,
-      token_website: metadata.token_website || null,
-      total_supply: metadata.total_supply ? parseFloat(metadata.total_supply) : null,
-      operator: metadata.operator || null,
-      display: metadata.token_name
-        ? `${metadata.token_name}${metadata.token_symbol ? " (" + metadata.token_symbol + ")" : ""}`
-        : contract.name,
-      created_at: contract.created
-    };
-    
-    console.log(`Final token data: ${JSON.stringify(tokenData)}`);
-    return json(tokenData);
+
+    return json(results.length === 1 ? results[0] : results);
+
   } catch (error) {
     console.error('Error fetching token metadata:', error);
     return new Response(JSON.stringify({ 
