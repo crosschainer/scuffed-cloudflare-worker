@@ -88,44 +88,56 @@ export async function pairCandlesHandler(request /*, ctx */) {
 
     /* ── GraphQL paged load ───────────────────────────────────── */
     const gql = `
-      query Swaps(
-        $pair: String!,
-        $since: Datetime!,
-        $until: Datetime!,
-        $first: Int!,
-        $offset: Int!
-      ) {
+      query Swaps($pair: String!, $since: Datetime!, $until: Datetime!, $first: Int!, $after: Cursor) {
         allEvents(
-          condition:{contract:"con_pairs",event:"Swap"}
-          filter:{
-            dataIndexed:{contains:{pair:$pair}}
-            created:{greaterThanOrEqualTo:$since, lessThan:$until}
+          condition: {contract: "con_pairs", event: "Swap"},
+          filter: {
+            dataIndexed: {contains: {pair: $pair}},
+            created: {greaterThanOrEqualTo: $since, lessThan: $until}
+          },
+          orderBy: CREATED_DESC,
+          first: $first,
+          after: $after
+        ) {
+          edges {
+            node {
+              created
+              data
+            }
+            cursor
           }
-          orderBy: CREATED_DESC
-          first:$first
-          offset:$offset
-        ){
-          edges { node { created data } }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
         }
       }
     `;
 
-    let offset = 0, done = false;
-    const raw = new Map(); // bucketStart → { open,high,low,close,v0,v1,openT,closeT }
-    console.log("Fetching candles for", pairId, "token", token,
-                "interval", ivStr, "range", rangeStr,
-                "since", sinceIso, "until", untilIso);
-    while (!done) {
-      console.log("Fetching candles page", offset);
+    let after = null; // cursor-based pagination
+    const raw = new Map();
+
+    while (true) {
+      console.log("Fetching candles page", after ?? "start");
       const res = await executeGraphQLQuery(
         gql,
-        { pair: pairId, since: sinceIso, until: untilIso, first: CHUNK, offset },
+        {
+          pair: pairId,
+          since: sinceIso,
+          until: untilIso,
+          first: CHUNK,
+          after,
+        },
         "Upstream GraphQL error on candles"
       );
-      console.log("Got candles page", offset, res?.data?.allEvents?.edges?.length || 0);
+
       const edges = res?.data?.allEvents?.edges || [];
+      const pageInfo = res?.data?.allEvents?.pageInfo;
+
       if (!edges.length) break;
+
       console.log("Processing", edges.length, "events");
+
       for (const { node: { created, data } } of edges) {
         const ts = Date.parse(created);
         const bucket = Math.floor(ts / ivMs) * ivMs;
@@ -143,27 +155,24 @@ export async function pairCandlesHandler(request /*, ctx */) {
             v0: 0,
             v1: 0,
             openT: ts,
-            closeT: ts
+            closeT: ts,
           };
         }
 
-        // aggregate high/low
         c.high = Math.max(c.high, p0);
         c.low = Math.min(c.low, p0);
 
-        // correct open/close ordering
-        if (ts < c.openT) { c.openT = ts; c.open = p0 }
-        if (ts > c.closeT) { c.closeT = ts; c.close = p0 }
+        if (ts < c.openT) { c.openT = ts; c.open = p0; }
+        if (ts > c.closeT) { c.closeT = ts; c.close = p0; }
 
-        // volumes
         c.v0 += (+data.amount0In || 0) + (+data.amount0Out || 0);
         c.v1 += (+data.amount1In || 0) + (+data.amount1Out || 0);
 
         raw.set(bucket, c);
       }
 
-      done = edges.length < CHUNK;
-      offset += CHUNK;
+      if (!pageInfo?.hasNextPage) break;
+      after = pageInfo.endCursor; // move to next page
     }
     console.log("Got", raw.size, "buckets");
 
