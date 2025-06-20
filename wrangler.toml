@@ -8,7 +8,7 @@ account_id         = "9f5eccdd843ab1ee026067fab55893f0"
 # Environment variables
 #########################
 [vars]
-GRAPHQL_URL = "https://node.xian.org/graphql"
+GRAPHQL_URL = "http://89.163.130.217:5000"
 
 
 #########################
@@ -21,4 +21,4 @@ route = { pattern = "xian-api.poc.workers.dev", custom_domain = true }
 # Optional Wrangler logs
 #########################
 [observability.logs]
-enabled = false
+enabled = true
