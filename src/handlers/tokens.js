@@ -136,20 +136,24 @@ export async function getTokenByName(request, { contractName }) {
       `${name}.metadata:operator`,
     ]);
 
-    const query = `
-      query GetTokenData {
-        allContracts(filter: {
-          xsc0001: {equalTo: true},
-          name: {in: [${contractNames.map(n => `"${n}"`).join(", ")}]}
-        }) {
+        const query = `
+      query GetTokenData($names: [String!], $stateKeys: [String!], $firstContracts: Int!, $firstStates: Int!) {
+        allContracts(
+          filter: {
+            xsc0001: {equalTo: true},
+            name: {in: $names}
+          },
+          first: $firstContracts
+        ) {
           nodes {
             name
             created
-          }
+         }
         }
-        allStates(filter: {
-          key: {in: [${stateKeys.map(k => `"${k}"`).join(", ")}]}
-        }) {
+        allStates(
+          filter: { key: { in: $stateKeys } },
+          first: $firstStates
+        ) {
           edges {
             node {
               key
@@ -161,7 +165,12 @@ export async function getTokenByName(request, { contractName }) {
     `;
 
     console.log(`Executing query: ${query}`);
-    const data = await executeGraphQLQuery(query);
+    const data = await executeGraphQLQuery(query, {
+      names: contractNames,
+      stateKeys,
+      firstContracts: contractNames.length,    // enough to cover all requested names
+      firstStates:    stateKeys.length         // enough to cover every metadata key
+    });
     console.log(`Query result: ${JSON.stringify(data)}`);
 
     const contracts = data?.data?.allContracts?.nodes || [];
