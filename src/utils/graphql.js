@@ -95,26 +95,33 @@ export async function executeGraphQLQuery(
   inflightCount++;
 
   // 3) Build the raw work (fetch + JSON parse)
-  const rawPromise = (async () => {
-    const response = await fetch(GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, variables }),
-    });
+  const rawPromise = async () => {
+  const response = await fetch(GRAPHQL_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw json(
-        { error: errorMessage, status: response.status, details: text },
-        { status: 502 }
-      );
-    }
+  if (!response.ok) {
+    const text = await response.text();
+    throw json(
+      { error: errorMessage, status: response.status, details: text },
+      { status: 502 }
+    );
+  }
 
-    const data = await response.json();
-    // cache success
-    shortTermCache.set(key, { ts: Date.now(), data });
-    return data;
-  })();
+  const data = await response.json();
+
+  if (data.errors) {
+    throw json(
+      { error: errorMessage, status: 502, details: data.errors },
+      { status: 502 }
+    );
+  }
+
+  shortTermCache.set(key, { ts: Date.now(), data });
+  return data;
+};
 
   // 4) Enforce global timeout across fetch+parse
   const timedPromise = withTimeout(
