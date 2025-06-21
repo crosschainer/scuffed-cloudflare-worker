@@ -21,23 +21,25 @@ router = APIRouter()
 
 # Define individual route handlers explicitly
 
-@router.get("/")
+@router.get("/", summary="API Root", description="Returns API information and links to documentation")
 @with_edge_cache(TTL_1H)
 async def root(request: Request):
-    return json_response({"message": "API Documentation"})
+    return json_response({
+        "message": "Scuffed API - FastAPI Replica of Cloudflare Worker",
+        "documentation": {
+            "swagger": f"{request.url.scheme}://{request.url.netloc}/docs",
+            "redoc": f"{request.url.scheme}://{request.url.netloc}/redoc"
+        },
+        "version": "1.0.0"
+    })
 
-@router.get("/openapi.json")
-@with_edge_cache(TTL_5S)
-async def openapi(request: Request):
-    return json_response({"openapi": "3.0.0"})
-
-@router.get("/total-supply")
+@router.get("/total-supply", summary="Total Supply", description="Returns the total supply of the token")
 @with_edge_cache(TTL_5S)
 async def total_supply(request: Request):
     from app.handlers.total_supply import total_supply_handler
     return await total_supply_handler(request)
 
-@router.get("/circulating-supply")
+@router.get("/circulating-supply", summary="Circulating Supply", description="Returns the circulating supply of the token")
 @with_edge_cache(TTL_5S)
 async def circulating_supply(request: Request):
     from app.handlers.circulating_supply import circulating_supply_handler
@@ -75,18 +77,21 @@ async def transactions(request: Request):
 # Register dynamic routes
 
 # /batch (POST)
-@router.post("/batch")
+@router.post("/batch", summary="Batch Processing", description="Process multiple API requests in a single call")
 @with_edge_cache(TTL_5S)
 async def batch_route(request: Request):
     return await batch_handler(request)
 
 # /token/<contract>/balance/<address>
-@router.get("/token/{contract_name}/balance/{address}")
+@router.get("/token/{contract_name}/balance/{address}", 
+           summary="Token Balance", 
+           description="Get token balance for a specific address",
+           response_description="Returns the token balance for the specified address")
 @with_edge_cache(0)  # no cache for balances
 async def token_balance(
     request: Request,
-    contract_name: str = Path(...),
-    address: str = Path(...)
+    contract_name: str = Path(..., description="Contract name of the token"),
+    address: str = Path(..., description="Address to check balance for")
 ):
     from app.handlers.token_balance import get_token_balance
     return await get_token_balance(request, contract_name, address)
