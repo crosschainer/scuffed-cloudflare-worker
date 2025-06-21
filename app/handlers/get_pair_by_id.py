@@ -31,7 +31,7 @@ async def get_pair_by_id(request: Request, pair_id: str = None):
             query PairById($pair: String!) {
                 allEvents(
                     condition: {contract: "con_pairs", event: "PairCreated"}
-                    filter: {dataIndexed: {contains: {pair: $pair}}}
+                    filter: {data: {contains: {pair: $pair}}}
                     first: 1
                 ) {
                     edges {
@@ -50,7 +50,6 @@ async def get_pair_by_id(request: Request, pair_id: str = None):
             query,
             {"pair": pair_id}
         )
-        
         # Extract pair data
         edges = result.get('data', {}).get('allEvents', {}).get('edges', [])
         if not edges:
@@ -58,10 +57,11 @@ async def get_pair_by_id(request: Request, pair_id: str = None):
         
         node = edges[0].get('node', {})
         data_indexed = node.get('dataIndexed', {})
+        data = node.get('data', {})
         
         # Format response
         pair_data = {
-            "pair": data_indexed.get('pair'),
+            "pair": data.get('pair'),
             "token0": data_indexed.get('token0'),
             "token1": data_indexed.get('token1'),
             "created": node.get('created')
