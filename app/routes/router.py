@@ -12,6 +12,12 @@ from app.utils.response import json_response
 from app.utils.websocket import websocket_with_shared_cache_refresh
 from app.middleware.cache import generate_cache_key
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.handlers.latest_candle import get_latest_candle
+from app.handlers.pair_volume import get_pair_volume
+from app.handlers.pair_price_change import get_pair_price_change
+from app.handlers.pair_trades import get_pair_trades
+from app.handlers.pair_reserves import get_pair_reserves
+from app.handlers.pairs import get_pairs
 
 # Import handlers
 from app.handlers.tokens import get_all_tokens, get_token_by_name
@@ -187,82 +193,65 @@ async def pairs_by_token(request: Request, token_contract: str = Path(...)):
     from app.handlers.pairs_by_token import get_pairs_by_token
     return await get_pairs_by_token(request, token_contract)
 
-# Stream routes
-from app.handlers.latest_candle import get_latest_candle
-from app.handlers.pair_volume import get_pair_volume
-from app.handlers.pair_price_change import get_pair_price_change
-from app.handlers.pair_trades import get_pair_trades
-from app.handlers.pair_reserves import get_pair_reserves
-from app.handlers.pairs import get_pairs
+# /ws/pairs/{pair_id}/candles
+@router.websocket("/ws/pairs/{pair_id}/candles")
+async def ws_candles(ws: WebSocket, pair_id: str):
+    await websocket_with_shared_cache_refresh(
+        cache_key_fn=lambda w: generate_cache_key(w),
+        handler_fn=lambda w: get_latest_candle(w, pair_id),
+        ttl=TTL_5S,
+        interval=TTL_5S * 1000,
+    )(ws)
 
-stream_routes = [
-    {
-        "pattern": r"^/stream/pairs/([^/]+)/candles$",
-        "handler": lambda req, pair_id: get_latest_candle(req, pair_id),
-        "ttl": TTL_5S,
-        "path": "/stream/pairs/{pair_id}/candles"
-    },
-    {
-        "pattern": r"^/stream/pairs/([^/]+)/volume24h$",
-        "handler": lambda req, pair_id: get_pair_volume(req, pair_id),
-        "ttl": TTL_5S,
-        "path": "/stream/pairs/{pair_id}/volume24h"
-    },
-    {
-        "pattern": r"^/stream/pairs/([^/]+)/pricechange24h$",
-        "handler": lambda req, pair_id: get_pair_price_change(req, pair_id),
-        "ttl": TTL_5S,
-        "path": "/stream/pairs/{pair_id}/pricechange24h"
-    },
-    {
-        "pattern": r"^/stream/pairs/([^/]+)/trades$",
-        "handler": lambda req, pair_id: get_pair_trades(req, pair_id),
-        "ttl": TTL_5S,
-        "path": "/stream/pairs/{pair_id}/trades"
-    },
-    {
-        "pattern": r"^/stream/pairs/([^/]+)/reserves$",
-        "handler": lambda req, pair_id: get_pair_reserves(req, pair_id),
-        "ttl": TTL_5S,
-        "path": "/stream/pairs/{pair_id}/reserves"
-    },
-    {
-        "pattern": r"^/stream/pairs$",
-        "handler": lambda req, _: get_pairs(req),
-        "ttl": TTL_5S,
-        "path": "/stream/pairs"
-    }
-]
-def make_ws_endpoint(handler, param_name: Optional[str], ttl: int):
-    async def endpoint(ws: WebSocket, **path_params):
-        # 1) accept the socket
-        await ws.accept()
-        # 2) build kwargs for handler
-        kwargs = {param_name: path_params[param_name]} if param_name else {}
-        # 3) run your cached‐refresh loop
-        await websocket_with_shared_cache_refresh(
-            cache_key_fn=lambda w: generate_cache_key(w),
-            handler_fn=lambda w: handler(w, **kwargs),
-            ttl=ttl,
-            interval=ttl * 1000
-        )(ws)
-    return endpoint
+# /ws/pairs/{pair_id}/volume24h
+@router.websocket("/ws/pairs/{pair_id}/volume24h")
+async def ws_volume(ws: WebSocket, pair_id: str):
+    await websocket_with_shared_cache_refresh(
+        cache_key_fn=lambda w: generate_cache_key(w),
+        handler_fn=lambda w: get_pair_volume(w, pair_id),
+        ttl=TTL_5S,
+        interval=TTL_5S * 1000,
+    )(ws)
 
-for cfg in stream_routes:
-    http_path = cfg["path"]
-    ws_path   = http_path.replace("/stream", "/ws/stream")
-    ttl       = cfg["ttl"]
-    handler   = cfg["handler"]
+# /ws/pairs/{pair_id}/pricechange24h
+@router.websocket("/ws/pairs/{pair_id}/pricechange24h")
+async def ws_price_change(ws: WebSocket, pair_id: str):
+    await websocket_with_shared_cache_refresh(
+        cache_key_fn=lambda w: generate_cache_key(w),
+        handler_fn=lambda w: get_pair_price_change(w, pair_id),
+        ttl=TTL_5S,
+        interval=TTL_5S * 1000,
+    )(ws)
 
-    # pull out e.g. "pair_id" or None
-    if "{" in http_path:
-        param = http_path.split("{",1)[1].split("}",1)[0]
-    else:
-        param = None
+# /ws/pairs/{pair_id}/trades
+@router.websocket("/ws/pairs/{pair_id}/trades")
+async def ws_trades(ws: WebSocket, pair_id: str):
+    await websocket_with_shared_cache_refresh(
+        cache_key_fn=lambda w: generate_cache_key(w),
+        handler_fn=lambda w: get_pair_trades(w, pair_id),
+        ttl=TTL_5S,
+        interval=TTL_5S * 1000,
+    )(ws)
 
-    # bind each one into its own endpoint
-    endpoint = make_ws_endpoint(handler, param, ttl)
-    router.websocket(ws_path)(endpoint)
+# /ws/pairs/{pair_id}/reserves
+@router.websocket("/ws/pairs/{pair_id}/reserves")
+async def ws_reserves(ws: WebSocket, pair_id: str):
+    await websocket_with_shared_cache_refresh(
+        cache_key_fn=lambda w: generate_cache_key(w),
+        handler_fn=lambda w: get_pair_reserves(w, pair_id),
+        ttl=TTL_5S,
+        interval=TTL_5S * 1000,
+    )(ws)
+
+# /ws/pairs (all pairs stream)
+@router.websocket("/ws/pairs")
+async def ws_pairs(ws: WebSocket):
+    await websocket_with_shared_cache_refresh(
+        cache_key_fn=lambda w: generate_cache_key(w),
+        handler_fn=lambda w: get_pairs(w),
+        ttl=TTL_5S,
+        interval=TTL_5S * 1000,
+    )(ws)
 
 
 # Method to handle path requests for batch processing
