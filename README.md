@@ -1,60 +1,133 @@
-# Xian API Cloudflare Worker
+# FastAPI Replica of Cloudflare Worker
 
-A modular Cloudflare Worker that provides API endpoints for Xian cryptocurrency data.
+This project is a 1:1 replica of a Cloudflare Worker implemented as a Python FastAPI application.
 
-## Development
+## Features
 
-### Prerequisites
+- Complete API compatibility with the original Cloudflare Worker
+- Edge caching with in-memory cache
+- Server-Sent Events (SSE) support
+- GraphQL client with throttling, caching, and deduplication
+- Batch request processing
+- CORS support
 
-- [Node.js](https://nodejs.org/) (v16 or later)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
+## Project Structure
 
-### Setup
+```
+fastapi-replica/
+├── app/
+│   ├── config/
+│   │   └── constants.py
+│   ├── handlers/
+│   │   ├── batch.py
+│   │   ├── circulating_supply.py
+│   │   ├── token_balance.py
+│   │   ├── token_holders.py
+│   │   ├── tokens.py
+│   │   └── total_supply.py
+│   ├── middleware/
+│   │   └── cache.py
+│   ├── routes/
+│   │   └── router.py
+│   ├── utils/
+│   │   ├── graphql.py
+│   │   ├── response.py
+│   │   └── sse.py
+│   └── main.py
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── run.py
+```
 
-1. Install dependencies:
-   ```
-   npm install
-   ```
+## Running the Application
 
-2. Login to Cloudflare:
-   ```
-   wrangler login
-   ```
+### Using Python
 
-3. Start local development server:
-   ```
-   wrangler dev
-   ```
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-### Deployment
+# Run the application
+python run.py
+```
 
-#### Multi-Environment Deployment
+### Using Docker
 
-This project supports multiple deployment environments to safely test changes without affecting production users.
+```bash
+# Build and run with Docker Compose
+docker-compose up -d
+```
 
-1. **Staging Environment** (for testing new features):
-   ```
-   wrangler deploy --env staging
-   ```
-   This deploys to `xian-api-staging.poc.workers.dev`
+The application will be available at http://localhost:12000.
 
-2. **Production Environment** (live API used by users):
-   ```
-   wrangler deploy --env production
-   ```
-   This deploys to `xian-api.poc.workers.dev`
+## API Endpoints
 
-#### Deployment Workflow
+The API provides the following endpoints:
 
-For safe deployments, follow this workflow:
+- `/` - API documentation
+- `/total-supply` - Get total token supply
+- `/circulating-supply` - Get circulating token supply
+- `/total-holders` - Get total token holders
+- `/tokens` - Get all tokens
+- `/tokens/{contract_name}` - Get token by name
+- `/token/{contract_name}/balance/{address}` - Get token balance
+- `/tokens/{contract_name}/holders` - Get token holders
+- `/pairs` - Get all pairs
+- `/pairs/{pair_id}` - Get pair by ID
+- `/pairs/{pair_id}/volume24h` - Get pair volume
+- `/pairs/{pair_id}/pricechange24h` - Get pair price change
+- `/pairs/{pair_id}/reserves` - Get pair reserves
+- `/pairs/{pair_id}/trades` - Get pair trades
+- `/pairs/{pair_id}/candles` - Get pair candles
+- `/pairs/with/{token_contract}` - Get pairs by token
+- `/stream/...` - SSE versions of various endpoints
 
-1. Develop and test locally using `wrangler dev`
-2. Deploy to staging and verify all features work correctly
-3. Once verified, deploy to production
-4. Monitor for any issues after deployment
+## Batch Requests
 
-## Adding New Endpoints
+You can make batch requests by sending a POST request to `/batch` with a JSON array of requests:
 
-1. Create a new handler file in `src/handlers/`
-2. Add the route to `src/routes/router.js`
-3. Update the OpenAPI specification in `src/config/openapi.js`
+```json
+[
+  {
+    "path": "/tokens",
+    "params": {
+      "limit": 5
+    }
+  },
+  {
+    "path": "/total-supply"
+  }
+]
+```
+
+## Testing
+
+```bash
+# Test the API
+curl http://localhost:12000/
+
+# Test batch processing
+curl -X POST -H "Content-Type: application/json" \
+  -d '[{"path":"/total-supply"},{"path":"/circulating-supply"}]' \
+  http://localhost:12000/batch
+
+# Test token balance
+curl http://localhost:12000/token/currency/balance/dao
+
+# Test token holders
+curl "http://localhost:12000/tokens/currency/holders?limit=3"
+```
+
+## Environment Variables
+
+- `PORT` - Port to run the server on (default: 12000)
+
+## Implementation Details
+
+The application is structured to mirror the Cloudflare Worker implementation:
+
+1. **Middleware**: Handles caching and request/response processing
+2. **Handlers**: Contains business logic for each endpoint
+3. **Utils**: Provides utility functions for common operations
+4. **Router**: Defines API routes and connects them to handlers
