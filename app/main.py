@@ -31,8 +31,8 @@ app.add_middleware(
 # Add edge cache middleware
 app.add_middleware(EdgeCacheMiddleware)
 
-# Include router
-app.include_router(router)
+# Include router - mount it at the root but with a prefix to ensure proper route order
+app.include_router(router, prefix="")
 
 # Custom OpenAPI schema
 def custom_openapi():
@@ -54,7 +54,7 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # Custom documentation endpoints
-@app.get("/docs", include_in_schema=False)
+@app.get("/docs", include_in_schema=False, response_class=HTMLResponse)
 async def custom_swagger_ui_html():
     return get_swagger_ui_html(
         openapi_url="/openapi.json",
@@ -64,7 +64,26 @@ async def custom_swagger_ui_html():
         swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
     )
 
-@app.get("/redoc", include_in_schema=False)
+@app.get("/docs/oauth2-redirect", include_in_schema=False, response_class=HTMLResponse)
+async def oauth2_redirect():
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <title>OAuth2 Redirect</title>
+    </head>
+    <body>
+    <script>
+        window.onload = function() {
+            window.opener.swaggerUIRedirectOauth2(window.location.href.split('#')[0]);
+            window.close();
+        }
+    </script>
+    </body>
+    </html>
+    """)
+
+@app.get("/redoc", include_in_schema=False, response_class=HTMLResponse)
 async def redoc_html():
     return get_redoc_html(
         openapi_url="/openapi.json",

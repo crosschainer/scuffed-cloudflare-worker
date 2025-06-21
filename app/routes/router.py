@@ -279,9 +279,13 @@ for route_config in stream_routes:
             )
             return await sse_handler(request)
 
-# Catch-all route for 404s
+# Catch-all route for 404s (exclude docs and openapi.json)
 @router.get("/{path:path}")
 async def catch_all(request: Request, path: str):
+    # Skip catch-all for documentation routes which are handled by the main app
+    if path in ["docs", "redoc", "openapi.json", "docs/oauth2-redirect"]:
+        # Pass through to the main app handlers
+        return None
     return json_response({"error": "Route not found"}, status_code=404)
 
 # Method to handle path requests for batch processing
