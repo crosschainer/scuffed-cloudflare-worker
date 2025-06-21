@@ -3,7 +3,8 @@ Application-wide constants
 """
 
 # The upstream GraphQL endpoint
-GRAPHQL_ENDPOINT = "https://node.xian.org/graphql"
+GRAPHQL_ENDPOINT = "http://localhost:5000/graphql"
+
 
 # When summing balances in chunks, fetch this many records per request
 CHUNK_SIZE = 2000

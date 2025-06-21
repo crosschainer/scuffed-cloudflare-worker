@@ -77,8 +77,16 @@ class EdgeCacheMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Skip caching for non-GET requests except OPTIONS
-        if request.method not in ["GET", "OPTIONS"]:
+        # 0) If this is a WS handshake, let it through:
+        if request.scope["type"] == "websocket":
+            return await call_next(request)
+
+        # 1) CORS preflight
+        if request.method == "OPTIONS":
+            return Response(status_code=204, headers=CORS_HEADERS)
+
+        # 2) Only cache GET
+        if request.method != "GET":
             return await call_next(request)
             
         # Handle CORS preflight

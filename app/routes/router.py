@@ -9,8 +9,9 @@ from fastapi.responses import JSONResponse
 from app.config.constants import TTL_5S, TTL_10M, TTL_1H, TTL_30_D
 from app.middleware.cache import with_edge_cache
 from app.utils.response import json_response
-from app.utils.sse import sse_with_shared_cache_refresh
+from app.utils.websocket import websocket_with_shared_cache_refresh
 from app.middleware.cache import generate_cache_key
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # Import handlers
 from app.handlers.tokens import get_all_tokens, get_token_by_name
@@ -232,61 +233,37 @@ stream_routes = [
         "path": "/stream/pairs"
     }
 ]
-
-# Register stream routes
-for route_config in stream_routes:
-    path = route_config["path"]
-    handler = route_config["handler"]
-    ttl = route_config["ttl"]
-    
-    # Extract parameter name from path
-    param_name = None
-    if "{" in path and "}" in path:
-        param_name = path[path.find("{")+1:path.find("}")]
-    
-    if param_name:
-        @router.get(path)
-        async def stream_route_with_param(
-            request: Request,
-            param_value: str = Path(...),
-            path=path,
-            handler=handler,
+def make_ws_endpoint(handler, param_name: Optional[str], ttl: int):
+    async def endpoint(ws: WebSocket, **path_params):
+        # 1) accept the socket
+        await ws.accept()
+        # 2) build kwargs for handler
+        kwargs = {param_name: path_params[param_name]} if param_name else {}
+        # 3) run your cached‐refresh loop
+        await websocket_with_shared_cache_refresh(
+            cache_key_fn=lambda w: generate_cache_key(w),
+            handler_fn=lambda w: handler(w, **kwargs),
             ttl=ttl,
-            param_name=param_name
-        ):
-            # Create a handler that uses the SSE utility
-            sse_handler = sse_with_shared_cache_refresh(
-                cache_key_fn=lambda req: generate_cache_key(req),
-                handler_fn=lambda req: handler(req, **{param_name: param_value}),
-                ttl=ttl,
-                interval=ttl * 1000
-            )
-            return await sse_handler(request)
-    else:
-        @router.get(path)
-        async def stream_route(
-            request: Request,
-            path=path,
-            handler=handler,
-            ttl=ttl
-        ):
-            # Create a handler that uses the SSE utility
-            sse_handler = sse_with_shared_cache_refresh(
-                cache_key_fn=lambda req: generate_cache_key(req),
-                handler_fn=lambda req: handler(req),
-                ttl=ttl,
-                interval=ttl * 1000
-            )
-            return await sse_handler(request)
+            interval=ttl * 1000
+        )(ws)
+    return endpoint
 
-# Catch-all route for 404s (exclude docs and openapi.json)
-@router.get("/{path:path}")
-async def catch_all(request: Request, path: str):
-    # Skip catch-all for documentation routes which are handled by the main app
-    if path in ["docs", "redoc", "openapi.json", "docs/oauth2-redirect"]:
-        # Pass through to the main app handlers
-        return None
-    return json_response({"error": "Route not found"}, status_code=404)
+for cfg in stream_routes:
+    http_path = cfg["path"]
+    ws_path   = http_path.replace("/stream", "/ws/stream")
+    ttl       = cfg["ttl"]
+    handler   = cfg["handler"]
+
+    # pull out e.g. "pair_id" or None
+    if "{" in http_path:
+        param = http_path.split("{",1)[1].split("}",1)[0]
+    else:
+        param = None
+
+    # bind each one into its own endpoint
+    endpoint = make_ws_endpoint(handler, param, ttl)
+    router.websocket(ws_path)(endpoint)
+
 
 # Method to handle path requests for batch processing
 async def handle_path_request(request: Request, path: str):

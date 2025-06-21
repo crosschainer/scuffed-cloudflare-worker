@@ -6,9 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from starlette.responses import JSONResponse, HTMLResponse
+import logging
+logger = logging.getLogger(__name__)
 
 from app.routes.router import router
 from app.middleware.cache import EdgeCacheMiddleware
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -23,7 +26,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -50,6 +53,16 @@ def custom_openapi():
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
+@app.on_event("startup")
+async def dump_routes():
+    for r in app.routes:
+        # WebSockets live as starlette.routing.WebSocketRoute
+        from starlette.routing import WebSocketRoute
+        if isinstance(r, WebSocketRoute):
+            logger.error(f"🔸 WS route: {r.path}")
+        else:
+            logger.error(f"• HTTP route ({','.join(r.methods or [])}): {r.path}")
 
 app.openapi = custom_openapi
 
@@ -99,18 +112,5 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "error": "Internal Server Error",
             "message": str(exc)
-        }
-    )
-
-# Add OPTIONS handler for CORS preflight
-@app.options("/{path:path}")
-async def options_handler(request: Request, path: str):
-    return JSONResponse(
-        content=None,
-        status_code=204,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type"
         }
     )
