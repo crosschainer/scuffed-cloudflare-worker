@@ -78,6 +78,7 @@ async def get_pair_trades(request: Request, pair_id: str = None):
                         node{
                             created
                             data
+                            txHash
                         }
                     }
                 }
@@ -98,6 +99,7 @@ async def get_pair_trades(request: Request, pair_id: str = None):
             node = row.get('node', {})
             d = node.get('data', {})
             ts = node.get('created')
+            hash = node.get('txHash')
             
             a0in = float(d.get('amount0In', 0) or 0)
             a0out = float(d.get('amount0Out', 0) or 0)
@@ -122,7 +124,8 @@ async def get_pair_trades(request: Request, pair_id: str = None):
                 "amount": amount,
                 "amount1": amount1,
                 "price": price,
-                "token": token
+                "token": token,
+                "txHash": hash
             })
         
         has_more = offset + limit < total

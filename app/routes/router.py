@@ -196,6 +196,8 @@ async def pairs_by_token(request: Request, token_contract: str = Path(...)):
 # /ws/pairs/{pair_id}/candles
 @router.websocket("/ws/pairs/{pair_id}/candles")
 async def ws_candles(ws: WebSocket, pair_id: str):
+    token = ws.query_params.get("token", default="1")
+    interval = ws.query_params.get("interval", default="5h")
     await websocket_with_shared_cache_refresh(
         cache_key_fn=lambda w: generate_cache_key(w),
         handler_fn=lambda w: get_latest_candle(w, pair_id),
@@ -206,9 +208,10 @@ async def ws_candles(ws: WebSocket, pair_id: str):
 # /ws/pairs/{pair_id}/volume24h
 @router.websocket("/ws/pairs/{pair_id}/volume24h")
 async def ws_volume(ws: WebSocket, pair_id: str):
+    token = ws.query_params.get("token", default="1")
     await websocket_with_shared_cache_refresh(
         cache_key_fn=lambda w: generate_cache_key(w),
-        handler_fn=lambda w: get_pair_volume(w, pair_id),
+        handler_fn=lambda w: get_pair_volume(w, pair_id),  # pass it through
         ttl=TTL_5S,
         interval=TTL_5S * 1000,
     )(ws)
@@ -218,7 +221,7 @@ async def ws_volume(ws: WebSocket, pair_id: str):
 async def ws_price_change(ws: WebSocket, pair_id: str):
     await websocket_with_shared_cache_refresh(
         cache_key_fn=lambda w: generate_cache_key(w),
-        handler_fn=lambda w: get_pair_price_change(w, pair_id),
+        handler_fn=lambda w: get_pair_price_change(w, pair_id),  # pass it through
         ttl=TTL_5S,
         interval=TTL_5S * 1000,
     )(ws)
@@ -227,8 +230,8 @@ async def ws_price_change(ws: WebSocket, pair_id: str):
 @router.websocket("/ws/pairs/{pair_id}/trades")
 async def ws_trades(ws: WebSocket, pair_id: str):
     await websocket_with_shared_cache_refresh(
-        cache_key_fn=lambda w: generate_cache_key(w),
-        handler_fn=lambda w: get_pair_trades(w, pair_id),
+      cache_key_fn=lambda w: generate_cache_key(w),
+      handler_fn=lambda w: get_pair_trades(w, pair_id),  # pass it through
         ttl=TTL_5S,
         interval=TTL_5S * 1000,
     )(ws)

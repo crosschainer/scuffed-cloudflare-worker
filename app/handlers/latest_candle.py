@@ -45,7 +45,34 @@ async def get_latest_candle(request: Request, pair_id: str = None):
         bucket_start = (now // iv_ms) * iv_ms
         since_iso = datetime.fromtimestamp(bucket_start / 1000).isoformat() + 'Z'
         until_iso = datetime.fromtimestamp((bucket_start + iv_ms) / 1000).isoformat() + 'Z'
-        
+         # ── Fetch the last trade before this bucket so we can seed the open price
+        prev_query = """
+            query LastSwap($pair:String!,$before:Datetime!){
+             allEvents(
+                condition:{contract:"con_pairs",event:"Swap"},
+                filter:{
+                  dataIndexed:{contains:{pair:$pair}},
+                  created:{lessThan:$before}
+                },
+                orderBy:CREATED_DESC,
+               first:1
+              ) {
+                edges { node { created data } }
+              }
+            }
+        """
+        prev_res = await execute_graphql_query(prev_query, {
+            "pair": pair_id,
+            "before": since_iso
+        })
+        prev_edges = prev_res.get("data", {}) \
+                         .get("allEvents", {}) \
+                         .get("edges", [])
+        prev_close = None
+        if prev_edges:
+            prev_data = prev_edges[0]["node"].get("data", {})
+            pc = price0(prev_data)
+            prev_close = pc if pc is not None else None
         # GraphQL query
         gql = """
             query Swaps(
@@ -99,7 +126,9 @@ async def get_latest_candle(request: Request, pair_id: str = None):
                 raw.append({"ts": ts, "p0": p0_value, "data": data})
         
         # Sort by timestamp
-        raw.sort(key=lambda x: x["ts"])
+         # ── Prepend synthetic tick at bucket_start so open == prior close
+        if prev_close is not None:
+            raw.insert(0, {"ts": bucket_start, "p0": prev_close, "data": {}})
         
         if not raw:
             return json_response({

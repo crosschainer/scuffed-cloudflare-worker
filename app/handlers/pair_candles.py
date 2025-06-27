@@ -273,22 +273,7 @@ async def get_pair_candles(request: Request, pair_id: str = None):
             if rec:
                 # Price in current bucket, adjusted for token perspective
                 rec_open = rec['open'] if token == "0" else 1 / rec['open']
-                
-                # Continuity check
-                if last_close is not None and abs(rec_open - last_close) > TOLERANCE:
-                    # Insert a synthetic candle that bridges the gap
-                    candles.append({
-                        't': datetime.fromtimestamp((b - 1) / 1000).isoformat() + 'Z',
-                        'open': last_close,
-                        'high': max(last_close, rec_open),
-                        'low': min(last_close, rec_open),
-                        'close': rec_open,
-                        'volume': 0,
-                        'fake': True
-                    })
-                    # After the fake candle, continuity is restored
-                    last_close = rec_open
-                
+                # Determine open price based solely on last_close (no fake candles)
                 open_price = last_close if last_close is not None else rec_open
                 close_price = rec['close'] if token == "0" else 1 / rec['close']
                 

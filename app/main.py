@@ -7,6 +7,7 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from starlette.responses import JSONResponse, HTMLResponse
 import logging
+logging.disable(logging.CRITICAL)   # blocks every log ≤ CRITICAL, i.e. everything
 logger = logging.getLogger(__name__)
 
 from app.routes.router import router
