@@ -142,3 +142,11 @@ async def execute_graphql_query(
             # Clean up
             if key in dedupe_cache:
                 del dedupe_cache[key]
+
+
+async def sweep_graphql_cache(interval=30):
+    while True:
+        now = time.time() * 1000
+        for k in [k for k,v in short_term_cache.items() if now - v["ts"] >= CACHE_TTL]:
+            short_term_cache.pop(k, None)
+        await asyncio.sleep(interval)

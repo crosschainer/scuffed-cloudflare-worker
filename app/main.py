@@ -7,20 +7,37 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from starlette.responses import JSONResponse, HTMLResponse
 import logging
-logging.disable(logging.CRITICAL)   # blocks every log ≤ CRITICAL, i.e. everything
 logger = logging.getLogger(__name__)
-
+import asyncio
 from app.routes.router import router
 from app.middleware.cache import EdgeCacheMiddleware
+from app.middleware.cache import cache_sweeper
+from app.utils.graphql import sweep_graphql_cache
+from contextlib import asynccontextmanager
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── startup ────────────────────────────────────────────────
+    tasks: list[asyncio.Task] = [
+        asyncio.create_task(cache_sweeper(interval=60)),
+        asyncio.create_task(sweep_graphql_cache(interval=30)),
+    ]
+    try:
+        yield                                            # ← app runs
+    finally:
+        # ── shutdown ───────────────────────────────────────────
+        for t in tasks:
+            t.cancel()
+        # Await all, but swallow CancelledError so shutdown is clean
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 # Create FastAPI app
 app = FastAPI(
     title="Scuffed API",
     description="A FastAPI replica of the Cloudflare worker API",
     version="1.0.0",
-    docs_url=None,  # Disable default docs
-    redoc_url=None  # Disable default redoc
+    lifespan=lifespan
 )
 
 # Add CORS middleware

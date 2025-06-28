@@ -9,7 +9,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from starlette.responses import StreamingResponse
-
+import asyncio
 # Simple in-memory cache
 cache_store = {}
 inflight = {}  # URL → Future
@@ -24,7 +24,17 @@ CORS_HEADERS = {
     "Access-Control-Allow-Headers": "Content-Type"
 }
 
-
+async def cache_sweeper(interval: int = 60):
+    """
+    Every <interval> seconds remove all entries whose TTL has expired.
+    """
+    while True:
+        now = time.time()
+        # Avoid RuntimeError: dict changed size during iteration
+        for key in [k for k, v in cache_store.items() if v["expires"] <= now]:
+            cache_store.pop(key, None)
+        await asyncio.sleep(interval)
+        
 def canonical(url: str) -> str:
     """
     Create a canonical URL by sorting query parameters
