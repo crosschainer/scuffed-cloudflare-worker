@@ -44,24 +44,33 @@ async def get_pair_reserves(request: Request, pair_id: str = None):
                 }
             }
         """
-        
-        data = await execute_graphql_query(
-            gql,
-            {"key0": key0, "key1": key1}
-        )
-        
+        try:
+            data = await execute_graphql_query(
+                gql,
+                {"key0": key0, "key1": key1}
+            )
+        except Exception as e:
+            return json_response(
+                {"pairId": pair_id, "reserve0": 0, "reserve1": 0})
         reserve0 = 0
         reserve1 = 0
         
         try:
             token0_edges = data.get('data', {}).get('token0', {}).get('edges', [])
             if token0_edges:
-                reserve0 = float(token0_edges[0].get('node', {}).get('valueNumeric', 0) or 0)
-                
+                try:
+                    reserve0 = float(token0_edges[0].get('node', {}).get('valueNumeric', 0) or 0)
+                except (TypeError, ValueError) as e:
+                    reserve0 = 0
             token1_edges = data.get('data', {}).get('token1', {}).get('edges', [])
             if token1_edges:
-                reserve1 = float(token1_edges[0].get('node', {}).get('valueNumeric', 0) or 0)
+                try:
+                    reserve1 = float(token1_edges[0].get('node', {}).get('valueNumeric', 0) or 0)
+                except (TypeError, ValueError) as e:
+                    reserve1 = 0
         except (TypeError, ValueError) as e:
+            reserve0 = 0
+            reserve1 = 0
             logger.error(f"Error parsing reserves: {e}")
         
         return json_response({
@@ -71,8 +80,4 @@ async def get_pair_reserves(request: Request, pair_id: str = None):
         })
     
     except Exception as err:
-        logger.error(f"Error in get_pair_reserves: {err}")
-        return json_response(
-            {"error": "Failed to fetch reserves", "message": str(err)},
-            status_code=500
-        )
+        return json_response({"pairId": pair_id, "reserve0": 0, "reserve1": 0})

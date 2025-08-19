@@ -40,6 +40,18 @@ async def root(request: Request):
         "version": "1.0.0"
     })
 
+@router.get("/total-supply-tracker", summary="Total Supply", description="Returns the total supply of the token")
+@with_edge_cache(TTL_5S)
+async def total_supply_tracker(request: Request):
+    from app.handlers.total_supply import total_supply_tracker_handler
+    return await total_supply_tracker_handler(request)
+
+@router.get("/circulating-supply-tracker", summary="Circulating Supply", description="Returns the circulating supply of the token")
+@with_edge_cache(TTL_5S)
+async def circulating_supply_tracker(request: Request):
+    from app.handlers.circulating_supply import circulating_supply_tracker_handler
+    return await circulating_supply_tracker_handler(request)
+
 @router.get("/total-supply", summary="Total Supply", description="Returns the total supply of the token")
 @with_edge_cache(TTL_5S)
 async def total_supply(request: Request):
@@ -185,6 +197,13 @@ async def token_distribution(request: Request, contract_name: str = Path(...)):
 async def pair_candles(request: Request, pair_id: str = Path(...)):
     from app.handlers.pair_candles import get_pair_candles
     return await get_pair_candles(request, pair_id)
+
+# /pairs/<id>/liquidity/<address>
+@router.get("/pairs/{pair_id}/liquidity/{address}")
+@with_edge_cache(0)  # no cache for balances
+async def pair_liquidity(request: Request, pair_id: str = Path(...), address: str = Path(...)):
+    from app.handlers.liquidity import get_pair_liquidity
+    return await get_pair_liquidity(request, pair_id, address)
 
 # /pairs/with/<tokenContract>
 @router.get("/pairs/with/{token_contract}")

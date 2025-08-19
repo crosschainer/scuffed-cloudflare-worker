@@ -4,19 +4,30 @@ Handler for pair candles endpoint
 import logging
 import re
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Tuple, Union
 from fastapi import Request
+from decimal import Decimal, getcontext
+from decimal import InvalidOperation
 
 from app.utils.graphql import execute_graphql_query
 from app.utils.response import json_response
 
 logger = logging.getLogger(__name__)
-
+getcontext().prec = 28          # enough for 18-decimals math
 # Constants
 CHUNK = 1000  # GraphQL page size
 MAX_CANDLES = 5000  # hard ceiling per response
 TOLERANCE = 1e-12  # price continuity tolerance
+
+def price_from_sync(d: Dict[str, Any]) -> Optional[float]:
+    """Mid-price of token0 in token1 units (single definition)."""
+    try:
+        r0 = Decimal(d["reserve0"])
+        r1 = Decimal(d["reserve1"])
+        return float(r1 / r0) if r0 != 0 else None
+    except (KeyError, InvalidOperation):
+        return None
 
 def interval_ms(interval_str: str = "1h") -> int:
     """Convert interval string to milliseconds"""
@@ -98,7 +109,7 @@ async def get_pair_candles(request: Request, pair_id: str = None):
         if before_q or after_q:
             range_ms = MAX_CANDLES * iv_ms
         
-        now = int(datetime.now().timestamp() * 1000)
+        now = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
         
         # Parse before/after timestamps
         before_ms = None
@@ -152,9 +163,80 @@ async def get_pair_candles(request: Request, pair_id: str = None):
         until_iso = datetime.fromtimestamp(until_ms / 1000).isoformat() + 'Z'
         
         logger.info(f"Fetching candles from {since_iso} to {until_iso}")
+        # ────────────────────────────────────────────────────────────
+        # 1) ─ Fetch **Sync** events first  → populate price fields
+        # ────────────────────────────────────────────────────────────
+        gql_sync = """
+        query Syncs($pair: String!, $since: Datetime!, $until: Datetime!,
+                    $first: Int!, $after: Cursor) {
+            allEvents(
+            condition: {contract: "con_pairs", event: "Sync"},
+            filter: {
+                dataIndexed: {contains: {pair: $pair}},
+                created: {greaterThanOrEqualTo: $since, lessThan: $until}
+            },
+            orderBy: CREATED_DESC, first: $first, after: $after
+            ) {
+            edges { node { created data } cursor }
+            pageInfo { hasNextPage endCursor }
+            }
+        }
+        """
+
+        raw: dict[int, dict[str, Any]] = {}
+        after_sync: str | None = None
+
+        while True:
+            res = await execute_graphql_query(
+                gql_sync,
+                {
+                    "pair": pair_id,
+                    "since": since_iso,
+                    "until": until_iso,
+                    "first": CHUNK,
+                    "after": after_sync,
+                },
+            )
+            edges = (
+                res.get("data", {})
+                .get("allEvents", {})
+                .get("edges", [])
+            )
+            if not edges:
+                break
+
+            for edge in edges:
+                node   = edge.get("node", {})
+                ts     = int(datetime.fromisoformat(
+                                node["created"].replace("Z", "+00:00")
+                            ).timestamp() * 1000)
+                bucket = math.floor(ts / iv_ms) * iv_ms
+                p0     = price_from_sync(node["data"])
+                if p0 is None:
+                    continue
+
+                rec = raw.setdefault(bucket, {
+                    "t":      datetime.fromtimestamp(bucket / 1000, tz=timezone.utc)
+                                    .isoformat().replace("+00:00", "Z"),
+                    "open":   p0, "high": p0, "low": p0, "close": p0,
+                    "v0": 0.0, "v1": 0.0,
+                    "openT": ts, "closeT": ts,
+                })
+
+                rec["high"]   = max(rec["high"], p0)
+                rec["low"]    = min(rec["low"],  p0)
+                if ts < rec["openT"]:
+                    rec["openT"], rec["open"] = ts, p0
+                if ts > rec["closeT"]:
+                    rec["closeT"], rec["close"] = ts, p0
+
+            pg = res["data"]["allEvents"]["pageInfo"]
+            if not pg["hasNextPage"]:
+                break
+            after_sync = pg["endCursor"]
         
         # GraphQL query
-        gql = """
+        gql_swap  = """
             query Swaps($pair: String!, $since: Datetime!, $until: Datetime!, $first: Int!, $after: Cursor) {
                 allEvents(
                     condition: {contract: "con_pairs", event: "Swap"},
@@ -181,78 +263,48 @@ async def get_pair_candles(request: Request, pair_id: str = None):
             }
         """
         
-        # Fetch and process data
-        after = None  # cursor-based pagination
-        raw = {}  # Using dict instead of Map
-        
+        after_swap: str | None = None
         while True:
-            logger.info(f"Fetching candles page {after or 'start'}")
             res = await execute_graphql_query(
-                gql,
+                gql_swap,
                 {
                     "pair": pair_id,
                     "since": since_iso,
                     "until": until_iso,
                     "first": CHUNK,
-                    "after": after,
-                }
+                    "after": after_swap,
+                },
             )
-            
-            edges = res.get('data', {}).get('allEvents', {}).get('edges', [])
-            page_info = res.get('data', {}).get('allEvents', {}).get('pageInfo', {})
-            
+            edges = (
+                res.get("data", {})
+                .get("allEvents", {})
+                .get("edges", [])
+            )
             if not edges:
                 break
-            
-            logger.info(f"Processing {len(edges)} events")
-            
+
             for edge in edges:
-                node = edge.get('node', {})
-                created = node.get('created')
-                data = node.get('data', {})
-                
-                ts = int(datetime.fromisoformat(created.replace('Z', '+00:00')).timestamp() * 1000)
+                node   = edge["node"]
+                ts     = int(datetime.fromisoformat(
+                                node["created"].replace("Z", "+00:00")
+                            ).timestamp() * 1000)
                 bucket = math.floor(ts / iv_ms) * iv_ms
-                p0 = price0(data)
-                
-                if p0 is None:
-                    continue
-                
-                if bucket not in raw:
-                    raw[bucket] = {
-                        't': datetime.fromtimestamp(bucket / 1000).isoformat() + 'Z',
-                        'open': p0,
-                        'high': p0,
-                        'low': p0,
-                        'close': p0,
-                        'v0': 0,
-                        'v1': 0,
-                        'openT': ts,
-                        'closeT': ts,
-                    }
-                
-                c = raw[bucket]
-                c['high'] = max(c['high'], p0)
-                c['low'] = min(c['low'], p0)
-                
-                if ts < c['openT']:
-                    c['openT'] = ts
-                    c['open'] = p0
-                
-                if ts > c['closeT']:
-                    c['closeT'] = ts
-                    c['close'] = p0
-                
-                c['v0'] += float(data.get('amount0In', 0) or 0) + float(data.get('amount0Out', 0) or 0)
-                c['v1'] += float(data.get('amount1In', 0) or 0) + float(data.get('amount1Out', 0) or 0)
-                
-                raw[bucket] = c
-            
-            if not page_info.get('hasNextPage'):
+                d      = node["data"]
+
+                rec = raw.get(bucket)
+                if rec is None:
+                    continue  # we have volume but no Sync price yet
+
+                rec["v0"] += float(d.get("amount0In",  0) or 0) \
+                        + float(d.get("amount0Out", 0) or 0)
+                rec["v1"] += float(d.get("amount1In",  0) or 0) \
+                        + float(d.get("amount1Out", 0) or 0)
+
+            pg = res["data"]["allEvents"]["pageInfo"]
+            if not pg["hasNextPage"]:
                 break
-            
-            after = page_info.get('endCursor')  # move to next page
-        
+            after_swap = pg["endCursor"]
+
         logger.info(f"Got {len(raw)} buckets")
         
         # Fill every bucket & serialize
@@ -271,17 +323,18 @@ async def get_pair_candles(request: Request, pair_id: str = None):
             rec = raw.get(b)
             
             if rec:
-                # Price in current bucket, adjusted for token perspective
-                rec_open = rec['open'] if token == "0" else 1 / rec['open']
-                # Determine open price based solely on last_close (no fake candles)
-                open_price = last_close if last_close is not None else rec_open
-                close_price = rec['close'] if token == "0" else 1 / rec['close']
+                rec_open  = 1/rec['open'] if token == "0" else rec['open']
+                open_price  = last_close if last_close is not None else rec_open
+                close_price = 1/rec['close'] if token == "0" else rec['close']
+
+                high = 1/rec['high'] if token == "0" else  rec['low']
+                low  = 1/rec['low']  if token == "0" else  rec['high']
                 
                 candles.append({
                     't': rec['t'],
                     'open': open_price,
-                    'high': rec['high'] if token == "0" else 1 / rec['low'],
-                    'low': rec['low'] if token == "0" else 1 / rec['high'],
+                    'high': high,
+                    'low': low,
                     'close': close_price,
                     'volume': rec['v0'] if token == "0" else rec['v1']
                 })
